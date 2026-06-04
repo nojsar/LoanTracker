@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1040959690891-164ij497l8g828718u3ie8iuf4lpbdgr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nojus.loantracker",
+            "certificate_hash": "8949492c5a9b1ce88b0d102d6d9b77afa436de9a"
+          }
+        },
+        {
           "client_id": "1040959690891-3g21bkij5jqgs59cs9toobbcu19jb5vg.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

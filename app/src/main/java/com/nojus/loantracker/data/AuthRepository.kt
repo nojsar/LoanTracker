@@ -38,7 +38,7 @@ class AuthRepository(
 
     val currentUser: FirebaseUser? get() = auth.currentUser
 
-    /** Must be called with an Activity context — the credential picker UI requires it. */
+    /** Must be called with an Activity context - the credential picker UI requires it. */
     suspend fun signInWithGoogle(activity: Activity): Result<FirebaseUser> = runCatching {
         val credentialManager = CredentialManager.create(activity)
 
@@ -63,7 +63,8 @@ class AuthRepository(
         val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
         val authResult = auth.signInWithCredential(firebaseCredential).await()
         val user = authResult.user ?: error("Firebase user was null after sign-in")
-        // Don't fail sign-in if profile write fails (e.g. Firestore rules not published yet).
+        // Do not fail sign-in if profile write fails, for example when Firestore rules
+        // have not been published yet.
         runCatching { persistProfile(user) }
             .onFailure { Log.w(TAG, "persistProfile failed", it) }
         user
@@ -97,21 +98,21 @@ class AuthRepository(
     companion object {
         private const val TAG = "AuthRepository"
 
-        fun humanizeError(t: Throwable): String? = when (t) {
-            is GetCredentialCancellationException -> null // user cancelled, no error to show
-            is NoCredentialException ->
-                "Couldn't sign in: no Google account is available to Credential Manager on this device. " +
-                    "Make sure you're signed into a Google account in Settings → Passwords & accounts."
-            is GetCredentialException ->
-                "Sign-in failed (${t.type}). " + (t.message ?: "Try again or check Play services.")
-            else -> t.localizedMessage ?: "Sign-in failed"
-        }
+        fun humanizeError(t: Throwable): String =
+            AuthFailureMessages.messageFor(classify(t), t.localizedMessage)
 
-        /** Raw, developer-facing detail surfaced as a Toast to diagnose silent failures. */
+        /** Raw developer-facing detail shown only in debug builds. */
         fun diagnostic(t: Throwable): String = buildString {
             append(t.javaClass.simpleName)
             (t as? GetCredentialException)?.type?.let { append(" [").append(it).append("]") }
             t.message?.let { append(": ").append(it) }
+        }
+
+        private fun classify(t: Throwable): AuthFailureKind = when (t) {
+            is GetCredentialCancellationException -> AuthFailureKind.UserCanceled
+            is NoCredentialException -> AuthFailureKind.NoGoogleAccount
+            is GetCredentialException -> AuthFailureKind.CredentialManager
+            else -> AuthFailureKind.Unknown
         }
     }
 }

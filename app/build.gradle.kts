@@ -1,3 +1,8 @@
+import groovy.json.JsonSlurper
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.util.Locale
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,12 +10,15 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+val loanTrackerApplicationId = "com.nojus.loantracker"
+val knownDebugOnlyFirebaseSha1s = setOf("12995445dac9cbdec7eb5229cc5162409eaf56c1")
+
 android {
     namespace = "com.nojus.loantracker"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.nojus.loantracker"
+        applicationId = loanTrackerApplicationId
         minSdk = 30
         targetSdk = 36
         versionCode = 4
@@ -44,6 +52,107 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+fun String.normalizedSha1(): String = replace(":", "").lowercase(Locale.US)
+
+fun ByteArray.toHex(): String = joinToString(separator = "") { "%02x".format(it) }
+
+fun keystoreCertificateSha1(
+    keystoreFile: File,
+    storePassword: CharArray,
+    alias: String
+): String? = runCatching {
+    val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
+    keystoreFile.inputStream().use { keyStore.load(it, storePassword) }
+    val certificate = keyStore.getCertificate(alias) ?: return@runCatching null
+    MessageDigest.getInstance("SHA-1").digest(certificate.encoded).toHex()
+}.getOrNull()
+
+val verifyGoogleSignInReleaseConfig by tasks.registering {
+    group = "verification"
+    description = "Fails release builds when Firebase Google sign-in OAuth is configured only for the local debug key."
+
+    val googleServicesJson = layout.projectDirectory.file("google-services.json")
+    inputs.file(googleServicesJson)
+
+    doLast {
+        val configFile = googleServicesJson.asFile
+        if (!configFile.isFile) {
+            throw GradleException("Missing ${configFile.absolutePath}. Google sign-in cannot be verified.")
+        }
+
+        val config = JsonSlurper().parse(configFile) as Map<*, *>
+        val firebaseClients = config["client"] as? List<*> ?: emptyList<Any>()
+        val appClient = firebaseClients
+            .mapNotNull { it as? Map<*, *> }
+            .firstOrNull { client ->
+                val clientInfo = client["client_info"] as? Map<*, *>
+                val androidInfo = clientInfo?.get("android_client_info") as? Map<*, *>
+                androidInfo?.get("package_name") == loanTrackerApplicationId
+            }
+            ?: throw GradleException(
+                "google-services.json has no Android client for $loanTrackerApplicationId."
+            )
+
+        val oauthClients = (appClient["oauth_client"] as? List<*>)
+            ?.mapNotNull { it as? Map<*, *> }
+            ?: emptyList()
+
+        val hasWebClient = oauthClients.any { (it["client_type"] as? Number)?.toInt() == 3 }
+        if (!hasWebClient) {
+            throw GradleException(
+                "google-services.json has no web OAuth client. Firebase Auth Google sign-in needs default_web_client_id."
+            )
+        }
+
+        val androidSha1s = oauthClients
+            .filter { (it["client_type"] as? Number)?.toInt() == 1 }
+            .mapNotNull { oauthClient ->
+                val androidInfo = oauthClient["android_info"] as? Map<*, *>
+                (androidInfo?.get("certificate_hash") as? String)?.normalizedSha1()
+            }
+            .toSet()
+
+        if (androidSha1s.isEmpty()) {
+            throw GradleException(
+                "google-services.json has no Android OAuth SHA-1 fingerprints for $loanTrackerApplicationId."
+            )
+        }
+
+        val debugSha1 = keystoreCertificateSha1(
+            keystoreFile = File(System.getProperty("user.home"), ".android/debug.keystore"),
+            storePassword = "android".toCharArray(),
+            alias = "androiddebugkey"
+        )
+
+        val isLocalDebugOnly = debugSha1 != null && androidSha1s.size == 1 && androidSha1s.contains(debugSha1)
+        val isKnownCheckedInDebugOnly = androidSha1s.size == 1 && androidSha1s.any {
+            knownDebugOnlyFirebaseSha1s.contains(it)
+        }
+
+        if (isLocalDebugOnly || isKnownCheckedInDebugOnly) {
+            throw GradleException(
+                """
+                Firebase Google sign-in is configured only for the local debug SHA-1.
+
+                Play Store installs are signed with the Play app signing certificate, so Credential Manager
+                can cancel Google sign-in before the app receives an ID token.
+
+                Fix:
+                1. In Play Console, open Test and release > Setup > App signing.
+                2. Copy the App signing key certificate SHA-1 and SHA-256.
+                3. Add both fingerprints to Firebase Project settings > Your apps > Android app.
+                4. Download the updated google-services.json and replace app/google-services.json.
+                5. Rerun :app:verifyGoogleSignInReleaseConfig and :app:assembleRelease.
+                """.trimIndent()
+            )
+        }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(verifyGoogleSignInReleaseConfig)
 }
 
 dependencies {
