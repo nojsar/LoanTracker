@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1040959690891",
+    "project_id": "loantracker-ab097",
+    "storage_bucket": "loantracker-ab097.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1040959690891:android:15d275b1731f9f833b5c8e",
+        "android_client_info": {
+          "package_name": "com.nojus.loantracker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1040959690891-3g21bkij5jqgs59cs9toobbcu19jb5vg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nojus.loantracker",
+            "certificate_hash": "12995445dac9cbdec7eb5229cc5162409eaf56c1"
+          }
+        },
+        {
+          "client_id": "1040959690891-1grj0547kibti2a2pcrb1ss8d27tnkv1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5TDG6Ju0A-OIbVaVoUFyGWX_gSJoqWHQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1040959690891-1grj0547kibti2a2pcrb1ss8d27tnkv1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

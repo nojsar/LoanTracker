@@ -1,0 +1,22 @@
+*.iml
+/.gradle/
+/app/build/
+/local.properties
+/.idea/
+/.kotlin/
+/.claude/
+.DS_Store
+/build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Private signing material and generated release artifacts
+/key
+*.jks
+*.keystore
+*.p12
+*.pem
+*.aab
+*.apk

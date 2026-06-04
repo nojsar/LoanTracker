@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Card path centred at (54,54), 60w x 28h, corner radius 6. -->
+
+    <!-- Back card: most rotated, lowest opacity. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-14">
+        <path
+            android:fillColor="#33FFFFFF"
+            android:pathData="M30,40 H78 A6,6 0 0 1 84,46 V62 A6,6 0 0 1 78,68 H30 A6,6 0 0 1 24,62 V46 A6,6 0 0 1 30,40 Z" />
+    </group>
+
+    <!-- Middle card. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-7">
+        <path
+            android:fillColor="#88FFFFFF"
+            android:pathData="M30,40 H78 A6,6 0 0 1 84,46 V62 A6,6 0 0 1 78,68 H30 A6,6 0 0 1 24,62 V46 A6,6 0 0 1 30,40 Z" />
+    </group>
+
+    <!-- Front card: fully white. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,40 H78 A6,6 0 0 1 84,46 V62 A6,6 0 0 1 78,68 H30 A6,6 0 0 1 24,62 V46 A6,6 0 0 1 30,40 Z" />
+
+    <!-- Front card chip square. -->
+    <path
+        android:fillColor="#3D6BE8"
+        android:pathData="M31.5,46 h7 a1.5,1.5 0 0 1 1.5,1.5 v4 a1.5,1.5 0 0 1 -1.5,1.5 h-7 a1.5,1.5 0 0 1 -1.5,-1.5 v-4 a1.5,1.5 0 0 1 1.5,-1.5 Z" />
+
+    <!-- Front card accent stripe. -->
+    <path
+        android:fillColor="#3D6BE8"
+        android:pathData="M31,60 H58 a1,1 0 0 1 0,2 H31 a1,1 0 0 1 0,-2 Z" />
+
+    <!-- "Paid" accent dot on the front card, top-right. -->
+    <path
+        android:fillColor="#22DD88"
+        android:pathData="M78,46.5 m -2.6,0 a 2.6,2.6 0 1,0 5.2,0 a 2.6,2.6 0 1,0 -5.2,0 Z" />
+</vector>

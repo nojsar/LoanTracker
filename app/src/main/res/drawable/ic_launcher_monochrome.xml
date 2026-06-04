@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Back card silhouette (faded). -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-14">
+        <path
+            android:fillColor="#55FFFFFF"
+            android:pathData="M30,40 H78 A6,6 0 0 1 84,46 V62 A6,6 0 0 1 78,68 H30 A6,6 0 0 1 24,62 V46 A6,6 0 0 1 30,40 Z" />
+    </group>
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-7">
+        <path
+            android:fillColor="#AAFFFFFF"
+            android:pathData="M30,40 H78 A6,6 0 0 1 84,46 V62 A6,6 0 0 1 78,68 H30 A6,6 0 0 1 24,62 V46 A6,6 0 0 1 30,40 Z" />
+    </group>
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,40 H78 A6,6 0 0 1 84,46 V62 A6,6 0 0 1 78,68 H30 A6,6 0 0 1 24,62 V46 A6,6 0 0 1 30,40 Z" />
+</vector>
