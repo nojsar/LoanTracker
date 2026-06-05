@@ -33,8 +33,8 @@ android {
         applicationId = loanTrackerApplicationId
         minSdk = 30
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -82,7 +82,7 @@ android {
 
 play {
     defaultToAppBundles.set(true)
-    track.set(providers.environmentVariable("PLAY_TRACK").orElse("internal"))
+    track.set(providers.environmentVariable("PLAY_TRACK").orElse("alpha"))
     releaseStatus.set(ReleaseStatus.COMPLETED)
 }
 

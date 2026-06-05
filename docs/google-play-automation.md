@@ -8,7 +8,7 @@ The workflow is `.github/workflows/google-play-internal.yml`. It builds the rele
 
 - Push to `main`: uploads only when `app/build.gradle.kts` has a different `versionCode` than the previous pushed commit.
 - Manual run: open **Actions > Upload Android release to Google Play > Run workflow** and choose `internal`, `alpha`, `beta`, or `production`.
-- Default track: `internal`.
+- Default track: `alpha`, which is Google Play closed testing.
 
 ## Required GitHub secrets
 
@@ -16,10 +16,10 @@ Add these in **GitHub > LoanTracker > Settings > Secrets and variables > Actions
 
 | Secret | Value |
 | --- | --- |
-| `ANDROID_UPLOAD_KEYSTORE_BASE64` | Base64 text of the local upload keystore file. |
-| `ANDROID_UPLOAD_KEYSTORE_PASSWORD` | Upload keystore password. |
-| `ANDROID_UPLOAD_KEY_ALIAS` | Upload key alias, currently `key0`. |
-| `ANDROID_UPLOAD_KEY_PASSWORD` | Upload key password. |
+| `ANDROID_KEYSTORE_BASE64` | Base64 text of the local upload keystore file. |
+| `ANDROID_KEYSTORE_PASSWORD` | Upload keystore password. |
+| `ANDROID_KEY_ALIAS` | Upload key alias, currently `key0`. |
+| `ANDROID_KEY_PASSWORD` | Upload key password. |
 | `ANDROID_PUBLISHER_CREDENTIALS` | Raw JSON contents of the Google Play service account key. |
 
 Create the keystore secret from this project root on Windows:
@@ -28,14 +28,14 @@ Create the keystore secret from this project root on Windows:
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("key")) | Set-Clipboard
 ```
 
-Paste the clipboard value into `ANDROID_UPLOAD_KEYSTORE_BASE64`.
+Paste the clipboard value into `ANDROID_KEYSTORE_BASE64`.
 
 ## Google Play service account
 
 1. In Google Cloud, enable the **Google Play Android Developer API**.
 2. Create a service account and JSON key.
 3. In Play Console, invite the service account email under **Users and permissions**.
-4. Grant this app access to the target release track. For the default workflow, grant access to the internal testing track.
+4. Grant this app access to the target release track. For the default workflow, grant access to the closed testing track.
 5. Paste the JSON key contents into `ANDROID_PUBLISHER_CREDENTIALS`.
 
 Keep the JSON key and upload keystore out of Git. They are intentionally consumed only from GitHub secrets.
