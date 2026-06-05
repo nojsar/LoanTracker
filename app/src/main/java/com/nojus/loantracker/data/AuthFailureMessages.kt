@@ -13,11 +13,9 @@ internal object AuthFailureMessages {
         fallback: String? = null
     ): String = when (kind) {
         AuthFailureKind.UserCanceled ->
-            "Google sign-in was canceled before an account was selected. " +
-                "If this happens every time, update the app or contact support."
+            "No Google account was selected. Tap Continue with Google and choose an account."
         AuthFailureKind.NoGoogleAccount ->
-            "Couldn't sign in: no Google account is available to Credential Manager on this device. " +
-                "Make sure you're signed into a Google account in Settings > Passwords & accounts."
+            "No Google account is available on this device. Add one in Settings > Passwords & accounts, then try again."
         AuthFailureKind.CredentialManager ->
             "Google sign-in failed before an account reached the app. " +
                 "Make sure Google Play services is up to date, then try again."

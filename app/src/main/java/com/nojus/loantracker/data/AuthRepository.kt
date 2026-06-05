@@ -12,7 +12,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialCustomException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.auth.FirebaseAuth
@@ -42,22 +42,8 @@ class AuthRepository(
     suspend fun signInWithGoogle(activity: Activity): Result<FirebaseUser> = runCatching {
         val credentialManager = CredentialManager.create(activity)
 
-        // For an explicit "Continue with Google" button we use the Sign in with Google
-        // flow. Unlike GetGoogleIdOption (a returning-user bottom sheet that can throw
-        // USER_CANCELED on some OEM devices), this reliably shows the account chooser on
-        // every device and Android version.
-        val option = GetSignInWithGoogleOption.Builder(webClientId).build()
-        val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
-
-        // GMS occasionally fails the first token fetch right after install with a transient
-        // error like "[28404] Failed to retrieve an ID token". Retry once after a short delay.
-        val response = try {
-            credentialManager.getCredential(activity, request)
-        } catch (e: GetCredentialCustomException) {
-            Log.w(TAG, "Transient credential error (${e.type}), retrying once", e)
-            delay(600)
-            credentialManager.getCredential(activity, request)
-        }
+        val request = googleIdTokenRequest()
+        val response = getCredentialWithTransientRetry(credentialManager, activity, request)
         val idToken = extractIdToken(response)
 
         val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
@@ -69,6 +55,30 @@ class AuthRepository(
             .onFailure { Log.w(TAG, "persistProfile failed", it) }
         user
     }.onFailure { Log.e(TAG, "Google sign-in failed", it) }
+
+    private fun googleIdTokenRequest(): GetCredentialRequest {
+        val option = GetGoogleIdOption.Builder()
+            .setServerClientId(webClientId)
+            .setFilterByAuthorizedAccounts(false)
+            .setAutoSelectEnabled(false)
+            .build()
+
+        return GetCredentialRequest.Builder()
+            .addCredentialOption(option)
+            .build()
+    }
+
+    private suspend fun getCredentialWithTransientRetry(
+        credentialManager: CredentialManager,
+        activity: Activity,
+        request: GetCredentialRequest
+    ): GetCredentialResponse = try {
+        credentialManager.getCredential(activity, request)
+    } catch (e: GetCredentialCustomException) {
+        Log.w(TAG, "Transient credential error (${e.type}), retrying once", e)
+        delay(600)
+        credentialManager.getCredential(activity, request)
+    }
 
     private fun extractIdToken(response: GetCredentialResponse): String {
         val credential = response.credential
@@ -100,13 +110,6 @@ class AuthRepository(
 
         fun humanizeError(t: Throwable): String =
             AuthFailureMessages.messageFor(classify(t), t.localizedMessage)
-
-        /** Raw developer-facing detail shown only in debug builds. */
-        fun diagnostic(t: Throwable): String = buildString {
-            append(t.javaClass.simpleName)
-            (t as? GetCredentialException)?.type?.let { append(" [").append(it).append("]") }
-            t.message?.let { append(": ").append(it) }
-        }
 
         private fun classify(t: Throwable): AuthFailureKind = when (t) {
             is GetCredentialCancellationException -> AuthFailureKind.UserCanceled

@@ -10,9 +10,10 @@ class AuthFailureMessagesTest {
     fun cancellationMessageIsUserSafe() {
         val message = AuthFailureMessages.messageFor(AuthFailureKind.UserCanceled)
 
-        assertTrue(message.contains("Google sign-in"))
+        assertTrue(message.contains("Google account"))
         assertFalse(message.contains("GetCredential"))
         assertFalse(message.contains("android.credentials"))
+        assertFalse(message.contains("Credential Manager"))
     }
 
     @Test
@@ -20,6 +21,7 @@ class AuthFailureMessagesTest {
         val message = AuthFailureMessages.messageFor(AuthFailureKind.NoGoogleAccount)
 
         assertTrue(message.contains("Settings > Passwords & accounts"))
+        assertFalse(message.contains("Credential Manager"))
     }
 
     @Test
