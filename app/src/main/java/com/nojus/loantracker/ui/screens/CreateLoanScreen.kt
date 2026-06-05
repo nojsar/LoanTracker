@@ -48,12 +48,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nojus.loantracker.data.SavedContact
 import com.nojus.loantracker.ui.LoanViewModel
 import com.nojus.loantracker.ui.formatDate
 import com.nojus.loantracker.ui.todayPlusDays
+
+object CreateLoanTestTags {
+    const val BorrowerEmailField = "create-loan-borrower-email"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,65 +124,22 @@ fun CreateLoanScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SectionLabel("Borrower")
-            ExposedDropdownMenuBox(
-                expanded = contactDropdownOpen && contacts.isNotEmpty(),
-                onExpandedChange = { contactDropdownOpen = it }
-            ) {
-                OutlinedTextField(
-                    value = borrowerEmail,
-                    onValueChange = { borrowerEmail = it; contactDropdownOpen = true },
-                    modifier = Modifier
-                        .menuAnchor(MenuAnchorType.PrimaryEditable)
-                        .fillMaxWidth(),
-                    label = { Text("Email") },
-                    placeholder = { Text("name@example.com") },
-                    leadingIcon = { Icon(Icons.Filled.PersonOutline, contentDescription = null) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = KeyboardType.Email
-                    )
-                )
-                val filtered = contacts.filter {
-                    borrowerEmail.isBlank() || it.email.contains(borrowerEmail, ignoreCase = true)
+            BorrowerInputFields(
+                borrowerEmail = borrowerEmail,
+                onBorrowerEmailChange = {
+                    borrowerEmail = it
+                    contactDropdownOpen = true
+                },
+                borrowerName = borrowerName,
+                onBorrowerNameChange = { borrowerName = it },
+                contacts = contacts,
+                contactDropdownOpen = contactDropdownOpen,
+                onContactDropdownOpenChange = { contactDropdownOpen = it },
+                onContactSelected = { contact ->
+                    borrowerEmail = contact.email
+                    if (borrowerName.isBlank()) borrowerName = contact.displayName
+                    contactDropdownOpen = false
                 }
-                if (filtered.isNotEmpty()) {
-                    DropdownMenu(
-                        expanded = contactDropdownOpen,
-                        onDismissRequest = { contactDropdownOpen = false }
-                    ) {
-                        filtered.take(6).forEach { c ->
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(c.email)
-                                        if (c.displayName.isNotBlank()) {
-                                            Text(
-                                                c.displayName,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    borrowerEmail = c.email
-                                    if (borrowerName.isBlank()) borrowerName = c.displayName
-                                    contactDropdownOpen = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-            OutlinedTextField(
-                value = borrowerName,
-                onValueChange = { borrowerName = it },
-                label = { Text("Borrower name (optional)") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(Modifier.height(4.dp))
@@ -304,6 +270,104 @@ fun CreateLoanScreen(
             },
             dismissButton = { TextButton(onClick = { showDate = false }) { Text("Cancel") } }
         ) { DatePicker(state = state) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BorrowerInputFields(
+    borrowerEmail: String,
+    onBorrowerEmailChange: (String) -> Unit,
+    borrowerName: String,
+    onBorrowerNameChange: (String) -> Unit,
+    contacts: List<SavedContact>,
+    contactDropdownOpen: Boolean,
+    onContactDropdownOpenChange: (Boolean) -> Unit,
+    onContactSelected: (SavedContact) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var emailFieldFocused by remember { mutableStateOf(false) }
+    val filtered = contacts.filter {
+        borrowerEmail.isBlank() || it.email.contains(borrowerEmail, ignoreCase = true)
+    }
+
+    LaunchedEffect(emailFieldFocused) {
+        if (emailFieldFocused) {
+            keyboardController?.show()
+        }
+    }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SectionLabel("Borrower")
+        ExposedDropdownMenuBox(
+            expanded = contactDropdownOpen && filtered.isNotEmpty(),
+            onExpandedChange = { onContactDropdownOpenChange(it) }
+        ) {
+            OutlinedTextField(
+                value = borrowerEmail,
+                onValueChange = {
+                    onBorrowerEmailChange(it)
+                    onContactDropdownOpenChange(true)
+                },
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryEditable)
+                    .onFocusChanged { focusState ->
+                        emailFieldFocused = focusState.isFocused
+                        if (focusState.isFocused) {
+                            onContactDropdownOpenChange(true)
+                        } else {
+                            onContactDropdownOpenChange(false)
+                        }
+                    }
+                    .testTag(CreateLoanTestTags.BorrowerEmailField)
+                    .fillMaxWidth(),
+                label = { Text("Email") },
+                placeholder = { Text("name@example.com") },
+                leadingIcon = { Icon(Icons.Filled.PersonOutline, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = KeyboardType.Email
+                )
+            )
+            if (filtered.isNotEmpty()) {
+                DropdownMenu(
+                    expanded = contactDropdownOpen,
+                    onDismissRequest = { onContactDropdownOpenChange(false) },
+                    properties = PopupProperties(focusable = false)
+                ) {
+                    filtered.take(6).forEach { contact ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(contact.email)
+                                    if (contact.displayName.isNotBlank()) {
+                                        Text(
+                                            contact.displayName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = { onContactSelected(contact) }
+                        )
+                    }
+                }
+            }
+        }
+        OutlinedTextField(
+            value = borrowerName,
+            onValueChange = onBorrowerNameChange,
+            label = { Text("Borrower name (optional)") },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
