@@ -1,3 +1,4 @@
+import com.github.triplet.gradle.androidpublisher.ReleaseStatus
 import groovy.json.JsonSlurper
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -8,10 +9,21 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.gradle.play.publisher)
 }
 
 val loanTrackerApplicationId = "com.nojus.loantracker"
 val knownDebugOnlyFirebaseSha1s = setOf("12995445dac9cbdec7eb5229cc5162409eaf56c1")
+val releaseSigningStoreFile = providers.environmentVariable("ANDROID_UPLOAD_KEYSTORE_FILE").orNull
+val releaseSigningStorePassword = providers.environmentVariable("ANDROID_UPLOAD_KEYSTORE_PASSWORD").orNull
+val releaseSigningKeyAlias = providers.environmentVariable("ANDROID_UPLOAD_KEY_ALIAS").orNull
+val releaseSigningKeyPassword = providers.environmentVariable("ANDROID_UPLOAD_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseSigningStoreFile,
+    releaseSigningStorePassword,
+    releaseSigningKeyAlias,
+    releaseSigningKeyPassword
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.nojus.loantracker"
@@ -28,9 +40,23 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    if (releaseSigningConfigured) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseSigningStoreFile!!)
+                storePassword = releaseSigningStorePassword
+                keyAlias = releaseSigningKeyAlias
+                keyPassword = releaseSigningKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -52,6 +78,12 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+play {
+    defaultToAppBundles.set(true)
+    track.set(providers.environmentVariable("PLAY_TRACK").orElse("internal"))
+    releaseStatus.set(ReleaseStatus.COMPLETED)
 }
 
 fun String.normalizedSha1(): String = replace(":", "").lowercase(Locale.US)
