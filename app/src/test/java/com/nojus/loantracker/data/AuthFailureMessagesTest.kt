@@ -21,6 +21,8 @@ class AuthFailureMessagesTest {
         val message = AuthFailureMessages.messageFor(AuthFailureKind.NoGoogleAccount)
 
         assertTrue(message.contains("Settings > Passwords & accounts"))
+        assertTrue(message.contains("SHA fingerprints"))
+        assertTrue(message.contains("Firebase"))
         assertFalse(message.contains("Credential Manager"))
     }
 

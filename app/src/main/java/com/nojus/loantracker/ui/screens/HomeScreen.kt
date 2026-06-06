@@ -87,6 +87,11 @@ fun HomeScreen(
     var tab by remember { mutableIntStateOf(0) }
     var settingsOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val appVersionName = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(streamError) {
@@ -102,7 +107,17 @@ fun HomeScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Loan Tracker", style = MaterialTheme.typography.titleLarge)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Loan Tracker", style = MaterialTheme.typography.titleLarge)
+                            if (appVersionName.isNotBlank()) {
+                                Spacer(Modifier.size(8.dp))
+                                Text(
+                                    text = "v$appVersionName",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         Text(
                             user.email.orEmpty(),
                             style = MaterialTheme.typography.bodySmall,
@@ -163,18 +178,18 @@ fun HomeScreen(
                 Tab(
                     selected = tab == 0,
                     onClick = { tab = 0 },
-                    text = { Text("Sent (${lists.sentCount})") }
+                    text = { Text("Received (${lists.receivedCount})") }
                 )
                 Tab(
                     selected = tab == 1,
                     onClick = { tab = 1 },
-                    text = { Text("Received (${lists.receivedCount})") }
+                    text = { Text("Sent (${lists.sentCount})") }
                 )
             }
 
-            val pending = if (tab == 0) lists.sentPending else lists.receivedPending
-            val other = if (tab == 0) lists.sentOther else lists.receivedOther
-            val youAreLender = tab == 0
+            val pending = if (tab == 0) lists.receivedPending else lists.sentPending
+            val other = if (tab == 0) lists.receivedOther else lists.sentOther
+            val youAreLender = tab == 1
 
             if (pending.isEmpty() && other.isEmpty()) {
                 EmptyState(youAreLender)
