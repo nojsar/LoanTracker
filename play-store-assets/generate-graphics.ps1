@@ -1,128 +1,167 @@
-# Generates Google Play Store graphics that match the in-app adaptive icon.
-# Output: app-icon-512.png (512x512) and feature-graphic-1024x500.png (1024x500).
-# Run from any directory; files land next to this script.
+# Generates Google Play graphics and legacy launcher mipmaps that match the
+# in-app adaptive icon: a serif Euro (Instrument Serif, bundled in res/font)
+# on the warm-ledger pine-to-gold gradient.
+#
+# Output:
+#   app-icon-512.png            (Play Store listing icon, full-bleed square)
+#   feature-graphic-1024x500.png
+#   ../app/src/main/res/mipmap-*/ic_launcher.png / ic_launcher_round.png
+#
+# Run from any directory; store files land next to this script.
 
 Add-Type -AssemblyName System.Drawing
 
 $outDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$resDir = Join-Path $outDir "..\app\src\main\res"
+$fontPath = Join-Path $resDir "font\instrument_serif.ttf"
 
-function New-RoundedRectPath {
-    param([float]$x, [float]$y, [float]$w, [float]$h, [float]$r)
+$PineGreen = [System.Drawing.Color]::FromArgb(255, 0x1B, 0x5E, 0x43)
+$LedgerGold = [System.Drawing.Color]::FromArgb(255, 0x7B, 0x5F, 0x0E)
+$Cream = [System.Drawing.Color]::FromArgb(255, 0xFD, 0xFB, 0xF5)
+
+$fonts = New-Object System.Drawing.Text.PrivateFontCollection
+$fonts.AddFontFile($fontPath)
+$serif = $fonts.Families[0]
+
+function New-Canvas {
+    param([int]$w, [int]$h)
+    $bmp = New-Object System.Drawing.Bitmap $w, $h
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    return $bmp, $g
+}
+
+function Fill-LedgerGradient {
+    param($g, [float]$w, [float]$h)
+    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+        (New-Object System.Drawing.PointF(0, 0)),
+        (New-Object System.Drawing.PointF($w, $h)),
+        $PineGreen, $LedgerGold
+    )
+    $g.FillRectangle($brush, 0, 0, $w, $h)
+    $brush.Dispose()
+
+    # Soft top-left highlight for depth, like the adaptive-icon background.
+    $hl = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $hl.AddEllipse($w * -0.45, $h * -0.45, $w * 1.2, $h * 1.2)
+    $pgb = New-Object System.Drawing.Drawing2D.PathGradientBrush($hl)
+    $pgb.CenterColor = [System.Drawing.Color]::FromArgb(0x2E, 255, 255, 255)
+    $pgb.SurroundColors = @([System.Drawing.Color]::FromArgb(0, 255, 255, 255))
+    $g.FillPath($pgb, $hl)
+    $pgb.Dispose(); $hl.Dispose()
+}
+
+# Returns a GraphicsPath of the Euro glyph scaled to $targetH tall and
+# centered at ($cx, $cy).
+function New-EuroPath {
+    param([float]$cx, [float]$cy, [float]$targetH)
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $d = $r * 2
-    $path.AddArc($x, $y, $d, $d, 180, 90)
-    $path.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
-    $path.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
-    $path.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
-    $path.CloseFigure()
+    $fmt = [System.Drawing.StringFormat]::GenericTypographic
+    $path.AddString(
+        [string][char]0x20AC, $serif,
+        [int][System.Drawing.FontStyle]::Regular, 100,
+        (New-Object System.Drawing.PointF(0, 0)), $fmt
+    )
+    $b = $path.GetBounds()
+    $s = $targetH / $b.Height
+    $m = New-Object System.Drawing.Drawing2D.Matrix
+    $m.Translate($cx - $s * ($b.X + $b.Width / 2), $cy - $s * ($b.Y + $b.Height / 2))
+    $m.Scale($s, $s)
+    $path.Transform($m)
+    $m.Dispose()
     return $path
 }
 
-function Fill-Gradient {
-    param($g, [float]$w, [float]$h)
-    $start = New-Object System.Drawing.PointF(0, 0)
-    $end = New-Object System.Drawing.PointF($w, $h)
-    $bg = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-        $start, $end,
-        [System.Drawing.Color]::FromArgb(255, 91, 124, 255),
-        [System.Drawing.Color]::FromArgb(255, 31, 46, 171)
-    )
-    $g.FillRectangle($bg, 0, 0, $w, $h)
-    $bg.Dispose()
+function Draw-IconInto {
+    param($g, [float]$size)
+    Fill-LedgerGradient $g $size $size
+    # Adaptive icons show ~72 of the 108dp canvas, where the glyph is 48 tall;
+    # full-bleed renders match that proportion at 48/72 ≈ 0.65 of the height.
+    $euro = New-EuroPath ($size / 2) ($size / 2) ($size * 0.62)
+    $brush = New-Object System.Drawing.SolidBrush($Cream)
+    $g.FillPath($brush, $euro)
+    $brush.Dispose(); $euro.Dispose()
 }
 
-function Draw-CardStack {
-    param($g, [float]$cx, [float]$cy, [float]$s)
-    # Base card geometry from the 108-unit in-app icon: 60w x 28h, radius 6.
-    $cardW = 60 * $s
-    $cardH = 28 * $s
-    $cardR = 6 * $s
-    $cardX = $cx - $cardW / 2
-    $cardY = $cy - $cardH / 2
-
-    $blue = [System.Drawing.Color]::FromArgb(255, 61, 107, 232)
-    $green = [System.Drawing.Color]::FromArgb(255, 34, 221, 136)
-
-    foreach ($rot in @(-14, -7, 0)) {
-        $alpha = if ($rot -eq -14) { 0x40 } elseif ($rot -eq -7) { 0xA0 } else { 0xFF }
-        $color = [System.Drawing.Color]::FromArgb($alpha, 255, 255, 255)
-        $state = $g.Save()
-        $g.TranslateTransform([float]$cx, [float]$cy)
-        $g.RotateTransform([float]$rot)
-        $g.TranslateTransform(-[float]$cx, -[float]$cy)
-        $path = New-RoundedRectPath $cardX $cardY $cardW $cardH $cardR
-        $brush = New-Object System.Drawing.SolidBrush($color)
-        $g.FillPath($brush, $path)
-        $brush.Dispose()
-        $path.Dispose()
-        $g.Restore($state)
-    }
-
-    # Chip on the front card.
-    $chip = New-RoundedRectPath ($cardX + 1.5 * $s) ($cardY + 6 * $s) (7 * $s) (6 * $s) (1.5 * $s)
-    $b = New-Object System.Drawing.SolidBrush($blue)
-    $g.FillPath($b, $chip); $chip.Dispose()
-
-    # Stripe along the bottom of the front card.
-    $stripe = New-RoundedRectPath ($cardX + 1 * $s) ($cardY + 20 * $s) (27 * $s) (2 * $s) (1 * $s)
-    $g.FillPath($b, $stripe); $stripe.Dispose()
-    $b.Dispose()
-
-    # Green "paid" dot top-right.
-    $dotR = 2.6 * $s
-    $dotCx = $cardX + $cardW - 6 * $s
-    $dotCy = $cardY + 6.5 * $s
-    $gb = New-Object System.Drawing.SolidBrush($green)
-    $g.FillEllipse($gb, $dotCx - $dotR, $dotCy - $dotR, $dotR * 2, $dotR * 2)
-    $gb.Dispose()
-}
-
-# ---------- APP ICON 512x512 ----------
-$icon = New-Object System.Drawing.Bitmap 512, 512
-$gi = [System.Drawing.Graphics]::FromImage($icon)
-$gi.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-$gi.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-Fill-Gradient $gi 512 512
-# 512/108 ≈ 4.74. Centered.
-Draw-CardStack $gi 256 256 (512 / 108)
+# ---------- APP ICON 512x512 (Play masks its own corners) ----------
+$icon, $gi = New-Canvas 512 512
+Draw-IconInto $gi 512
 $iconPath = Join-Path $outDir "app-icon-512.png"
 $icon.Save($iconPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $gi.Dispose(); $icon.Dispose()
+Write-Output "Generated: $iconPath"
+
+# ---------- LEGACY LAUNCHER MIPMAPS ----------
+# Unused at runtime on minSdk 30 (the adaptive icon wins), kept for tools
+# that read the bitmap fallbacks.
+$densities = @(
+    @{ dir = "mipmap-mdpi"; px = 48 },
+    @{ dir = "mipmap-hdpi"; px = 72 },
+    @{ dir = "mipmap-xhdpi"; px = 96 },
+    @{ dir = "mipmap-xxhdpi"; px = 144 },
+    @{ dir = "mipmap-xxxhdpi"; px = 192 }
+)
+foreach ($d in $densities) {
+    $px = $d.px
+    foreach ($variant in @("ic_launcher", "ic_launcher_round")) {
+        $bmp, $g = New-Canvas $px $px
+        $mask = New-Object System.Drawing.Drawing2D.GraphicsPath
+        if ($variant -eq "ic_launcher_round") {
+            $mask.AddEllipse(0, 0, $px, $px)
+        } else {
+            $r = [float]($px * 0.17); $dm = $r * 2
+            $mask.AddArc(0, 0, $dm, $dm, 180, 90)
+            $mask.AddArc($px - $dm, 0, $dm, $dm, 270, 90)
+            $mask.AddArc($px - $dm, $px - $dm, $dm, $dm, 0, 90)
+            $mask.AddArc(0, $px - $dm, $dm, $dm, 90, 90)
+            $mask.CloseFigure()
+        }
+        $g.SetClip($mask)
+        Draw-IconInto $g $px
+        $g.ResetClip(); $mask.Dispose()
+        $file = Join-Path (Join-Path $resDir $d.dir) "$variant.png"
+        $bmp.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)
+        $g.Dispose(); $bmp.Dispose()
+    }
+    Write-Output "Generated: $($d.dir) launcher PNGs"
+}
 
 # ---------- FEATURE GRAPHIC 1024x500 ----------
-$feat = New-Object System.Drawing.Bitmap 1024, 500
-$gf = [System.Drawing.Graphics]::FromImage($feat)
-$gf.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-$gf.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+$feat, $gf = New-Canvas 1024 500
 $gf.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+Fill-LedgerGradient $gf 1024 500
 
-Fill-Gradient $gf 1024 500
+# Big serif Euro as the left-side mark.
+$euro = New-EuroPath 235 250 300
+$creamBrush = New-Object System.Drawing.SolidBrush($Cream)
+$gf.FillPath($creamBrush, $euro)
+$euro.Dispose()
 
-# Card stack on the left, scaled larger than the app icon for hero feel.
-Draw-CardStack $gf 240 250 2.9
+# Serif wordmark, drawn as a path so the private font renders reliably.
+$title = New-Object System.Drawing.Drawing2D.GraphicsPath
+$title.AddString(
+    "Loan Tracker", $serif,
+    [int][System.Drawing.FontStyle]::Regular, 92,
+    (New-Object System.Drawing.PointF(455, 160)),
+    [System.Drawing.StringFormat]::GenericTypographic
+)
+$gf.FillPath($creamBrush, $title)
+$title.Dispose(); $creamBrush.Dispose()
 
-# Text on the right.
-$family = New-Object System.Drawing.FontFamily("Segoe UI")
-$titleFont = New-Object System.Drawing.Font($family, 72, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-$taglineFont = New-Object System.Drawing.Font($family, 30, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
-$subFont = New-Object System.Drawing.Font($family, 22, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
-
-$white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-$dim = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(230, 255, 255, 255))
-$dimmer = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(170, 255, 255, 255))
-
+$ui = New-Object System.Drawing.FontFamily("Segoe UI")
+$taglineFont = New-Object System.Drawing.Font($ui, 30, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+$subFont = New-Object System.Drawing.Font($ui, 22, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+$dim = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(230, 0xFD, 0xFB, 0xF5))
+$dimmer = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(175, 0xFD, 0xFB, 0xF5))
 $mid = [string][char]0x00B7
-$gf.DrawString("Loan Tracker", $titleFont, $white, 470, 158)
-$gf.DrawString("Track loans between friends", $taglineFont, $dim, 472, 262)
-$gf.DrawString("Real-time  $mid  Private  $mid  No ads", $subFont, $dimmer, 472, 315)
-
-$titleFont.Dispose(); $taglineFont.Dispose(); $subFont.Dispose()
-$white.Dispose(); $dim.Dispose(); $dimmer.Dispose()
+$gf.DrawString("Clear terms for loans between friends", $taglineFont, $dim, 458, 292)
+$gf.DrawString("Offers & requests  $mid  Payment plans  $mid  No ads", $subFont, $dimmer, 459, 345)
+$taglineFont.Dispose(); $subFont.Dispose(); $dim.Dispose(); $dimmer.Dispose()
 
 $featPath = Join-Path $outDir "feature-graphic-1024x500.png"
 $feat.Save($featPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $gf.Dispose(); $feat.Dispose()
+Write-Output "Generated: $featPath"
 
-Write-Output "Generated:"
-Write-Output "  $iconPath"
-Write-Output "  $featPath"
+$fonts.Dispose()
