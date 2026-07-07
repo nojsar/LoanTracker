@@ -43,3 +43,16 @@ fun humanizeUntil(epochMillis: Long): String {
 fun todayPlusDays(days: Int): Long =
     LocalDate.now().plusDays(days.toLong())
         .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+/** How loudly a deadline should speak in the UI. */
+enum class DueUrgency { Overdue, Soon, Normal }
+
+fun dueUrgency(epochMillis: Long, now: Long = System.currentTimeMillis()): DueUrgency {
+    if (epochMillis <= 0L) return DueUrgency.Normal
+    val remaining = epochMillis - now
+    return when {
+        remaining < 0 -> DueUrgency.Overdue
+        remaining <= 3L * 24 * 60 * 60 * 1000 -> DueUrgency.Soon
+        else -> DueUrgency.Normal
+    }
+}

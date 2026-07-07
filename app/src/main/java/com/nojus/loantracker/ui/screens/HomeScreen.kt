@@ -1,5 +1,12 @@
 package com.nojus.loantracker.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +32,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Handshake
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -36,13 +44,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -59,18 +68,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.firebase.auth.FirebaseUser
 import com.nojus.loantracker.data.Loan
 import com.nojus.loantracker.data.LoanStatus
+import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.ui.AuthViewModel
+import com.nojus.loantracker.ui.DueUrgency
 import com.nojus.loantracker.ui.LoanLists
 import com.nojus.loantracker.ui.LoanViewModel
 import com.nojus.loantracker.ui.NextDeadline
+import com.nojus.loantracker.ui.dueUrgency
 import com.nojus.loantracker.ui.formatDate
 import com.nojus.loantracker.ui.formatMoney
 import com.nojus.loantracker.ui.humanizeUntil
+import com.nojus.loantracker.ui.theme.LedgerSerif
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,14 +121,19 @@ fun HomeScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Loan Tracker", style = MaterialTheme.typography.titleLarge)
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                "Loan Tracker",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontFamily = LedgerSerif
+                            )
                             if (appVersionName.isNotBlank()) {
                                 Spacer(Modifier.size(8.dp))
                                 Text(
                                     text = "v$appVersionName",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
                                 )
                             }
                         }
@@ -171,45 +190,60 @@ fun HomeScreen(
             if (lists.hasSummary) {
                 SummarySection(lists)
             }
-            TabRow(
-                selectedTabIndex = tab,
-                containerColor = MaterialTheme.colorScheme.background
+
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Tab(
+                SegmentedButton(
                     selected = tab == 0,
                     onClick = { tab = 0 },
-                    text = { Text("Received (${lists.receivedCount})") }
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    label = { Text("Received (${lists.receivedCount})") }
                 )
-                Tab(
+                SegmentedButton(
                     selected = tab == 1,
                     onClick = { tab = 1 },
-                    text = { Text("Sent (${lists.sentCount})") }
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    label = { Text("Sent (${lists.sentCount})") }
                 )
             }
 
-            val pending = if (tab == 0) lists.receivedPending else lists.sentPending
-            val other = if (tab == 0) lists.receivedOther else lists.sentOther
-            val youAreLender = tab == 1
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    val direction = if (targetState > initialState) 1 else -1
+                    (slideInHorizontally(tween(240)) { direction * it / 10 } + fadeIn(tween(240))) togetherWith
+                        (slideOutHorizontally(tween(160)) { -direction * it / 10 } + fadeOut(tween(120)))
+                },
+                label = "loan-lists"
+            ) { selected ->
+                val pending = if (selected == 0) lists.receivedPending else lists.sentPending
+                val other = if (selected == 0) lists.receivedOther else lists.sentOther
+                val youAreLender = selected == 1
 
-            if (pending.isEmpty() && other.isEmpty()) {
-                EmptyState(youAreLender)
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    section(
-                        title = if (youAreLender) "Awaiting acceptance" else "Pending — needs your response",
-                        loans = pending,
-                        youAreLender = youAreLender,
-                        onOpen = onOpenLoan
-                    )
-                    section(
-                        title = if (youAreLender) "Active & history" else "Active & history",
-                        loans = other,
-                        youAreLender = youAreLender,
-                        onOpen = onOpenLoan
-                    )
+                if (pending.isEmpty() && other.isEmpty()) {
+                    EmptyState(youAreLender)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        section(
+                            title = if (youAreLender) "Awaiting acceptance" else "Needs your response",
+                            loans = pending,
+                            youAreLender = youAreLender,
+                            onOpen = onOpenLoan
+                        )
+                        section(
+                            title = "Active & history",
+                            loans = other,
+                            youAreLender = youAreLender,
+                            onOpen = onOpenLoan
+                        )
+                    }
                 }
             }
         }
@@ -225,7 +259,12 @@ private fun LazyListScope.section(
     if (loans.isEmpty()) return
     item(key = "h-$title") { SectionHeader(title) }
     items(loans, key = { it.id }) { loan ->
-        LoanRow(loan = loan, youAreLender = youAreLender, onClick = { onOpen(loan.id) })
+        LoanRow(
+            loan = loan,
+            youAreLender = youAreLender,
+            onClick = { onOpen(loan.id) },
+            modifier = Modifier.animateItem()
+        )
     }
 }
 
@@ -255,14 +294,14 @@ private fun SummarySection(lists: LoanLists) {
                 value = formatMoney(lists.owedAtDue),
                 sub = "on ${formatMoney(lists.owedPrincipal)} borrowed",
                 next = lists.nextOwedDeadline,
-                accent = SummaryAccent.Neutral,
+                accent = SummaryAccent.Attention,
                 modifier = Modifier.weight(1f)
             )
         }
     }
 }
 
-private enum class SummaryAccent { Positive, Neutral }
+private enum class SummaryAccent { Positive, Attention }
 
 @Composable
 private fun StatCard(
@@ -277,12 +316,12 @@ private fun StatCard(
     val fg: Color
     when (accent) {
         SummaryAccent.Positive -> {
+            bg = MaterialTheme.colorScheme.primaryContainer
+            fg = MaterialTheme.colorScheme.onPrimaryContainer
+        }
+        SummaryAccent.Attention -> {
             bg = MaterialTheme.colorScheme.tertiaryContainer
             fg = MaterialTheme.colorScheme.onTertiaryContainer
-        }
-        SummaryAccent.Neutral -> {
-            bg = MaterialTheme.colorScheme.secondaryContainer
-            fg = MaterialTheme.colorScheme.onSecondaryContainer
         }
     }
     Card(
@@ -297,12 +336,11 @@ private fun StatCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = fg.copy(alpha = 0.75f)
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = value,
-                style = MaterialTheme.typography.headlineSmall,
-                color = fg,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.headlineMedium,
+                color = fg
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -326,11 +364,14 @@ private fun StatCard(
                     color = fg,
                     fontWeight = FontWeight.SemiBold
                 )
+                val urgency = dueUrgency(next.dueAt)
                 Text(
                     text = "${formatDate(next.dueAt)} · ${humanizeUntil(next.dueAt)}" +
                         if (next.count > 1) " · ${next.count} loans" else "",
                     style = MaterialTheme.typography.bodySmall,
-                    color = fg.copy(alpha = 0.85f)
+                    color = if (urgency == DueUrgency.Overdue) MaterialTheme.colorScheme.error
+                            else fg.copy(alpha = 0.85f),
+                    fontWeight = if (urgency != DueUrgency.Normal) FontWeight.SemiBold else null
                 )
             }
         }
@@ -341,7 +382,7 @@ private fun StatCard(
 private fun SectionHeader(text: String) {
     Text(
         text = text.uppercase(),
-        style = MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp)
     )
@@ -350,23 +391,50 @@ private fun SectionHeader(text: String) {
 @Composable
 private fun EmptyState(youAreLender: Boolean) {
     Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(
-            text = if (youAreLender)
-                "You haven't sent any loans yet.\nTap \"New loan\" to send one."
-            else
-                "Nobody has sent you a loan yet.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(72.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (youAreLender) Icons.Filled.ArrowOutward else Icons.Outlined.Handshake,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = if (youAreLender) "Nothing lent yet" else "Nothing borrowed yet",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = if (youAreLender)
+                    "Send a loan offer with \"New loan\" —\nyou'll both see the same terms."
+                else
+                    "Loan offers sent to your email\nwill show up here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
 @Composable
-private fun LoanRow(loan: Loan, youAreLender: Boolean, onClick: () -> Unit) {
+private fun LoanRow(
+    loan: Loan,
+    youAreLender: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -375,18 +443,26 @@ private fun LoanRow(loan: Loan, youAreLender: Boolean, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            DirectionIcon(youAreLender = youAreLender)
+            CounterpartyAvatar(loan = loan, youAreLender = youAreLender)
             Spacer(Modifier.size(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (youAreLender) "To ${loan.borrowerEmail}" else "From ${loan.lenderEmail}",
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1
                 )
                 Spacer(Modifier.height(2.dp))
+                val urgency = dueUrgency(loan.dueAt)
+                val deadlineMatters = loan.status == LoanStatus.ACTIVE || loan.status == LoanStatus.PENDING
                 Text(
                     text = "Due ${formatDate(loan.dueAt)} · ${humanizeUntil(loan.dueAt)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (deadlineMatters && urgency != DueUrgency.Normal)
+                        MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (deadlineMatters && urgency != DueUrgency.Normal)
+                        FontWeight.SemiBold
+                    else null
                 )
                 Spacer(Modifier.height(6.dp))
                 StatusChip(loan.status)
@@ -395,10 +471,15 @@ private fun LoanRow(loan: Loan, youAreLender: Boolean, onClick: () -> Unit) {
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = formatMoney(loan.totalDue, loan.currency),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.headlineSmall
                 )
-                if (loan.interestMultiplier != 1.0) {
+                if (loan.repaymentInterval != RepaymentInterval.NONE) {
+                    Text(
+                        text = "${loan.installmentCount} × ${formatMoney(loan.installmentAmount, loan.currency)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (loan.interestMultiplier != 1.0) {
                     Text(
                         text = "× ${"%.2f".format(loan.interestMultiplier)}",
                         style = MaterialTheme.typography.bodySmall,
@@ -411,19 +492,45 @@ private fun LoanRow(loan: Loan, youAreLender: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DirectionIcon(youAreLender: Boolean) {
-    Surface(
-        modifier = Modifier.size(40.dp).clip(CircleShape),
-        color = if (youAreLender) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.tertiaryContainer
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = if (youAreLender) Icons.Filled.ArrowOutward else Icons.AutoMirrored.Filled.CallReceived,
-                contentDescription = null,
-                tint = if (youAreLender) MaterialTheme.colorScheme.onPrimaryContainer
-                       else MaterialTheme.colorScheme.onTertiaryContainer
-            )
+private fun CounterpartyAvatar(loan: Loan, youAreLender: Boolean) {
+    val counterpartyName = if (youAreLender) {
+        loan.borrowerName.ifBlank { loan.borrowerEmail }
+    } else {
+        loan.lenderName.ifBlank { loan.lenderEmail }
+    }
+    val initial = counterpartyName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+    val bg = if (youAreLender) MaterialTheme.colorScheme.primaryContainer
+             else MaterialTheme.colorScheme.tertiaryContainer
+    val fg = if (youAreLender) MaterialTheme.colorScheme.onPrimaryContainer
+             else MaterialTheme.colorScheme.onTertiaryContainer
+    Box(modifier = Modifier.size(44.dp)) {
+        Surface(
+            modifier = Modifier.size(44.dp).clip(CircleShape),
+            color = bg
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = initial,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = LedgerSerif,
+                    color = fg
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier.size(18.dp).align(Alignment.BottomEnd),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (youAreLender) Icons.Filled.ArrowOutward
+                                  else Icons.AutoMirrored.Filled.CallReceived,
+                    contentDescription = if (youAreLender) "Lent" else "Borrowed",
+                    tint = fg,
+                    modifier = Modifier.size(11.dp)
+                )
+            }
         }
     }
 }
@@ -431,19 +538,27 @@ private fun DirectionIcon(youAreLender: Boolean) {
 @Composable
 fun StatusChip(status: LoanStatus) {
     val (label, bg, fg) = when (status) {
-        LoanStatus.PENDING -> Triple("Pending", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+        LoanStatus.PENDING -> Triple("Pending", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
         LoanStatus.ACTIVE -> Triple("Active", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
-        LoanStatus.PAID -> Triple("Paid", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+        LoanStatus.PAID -> Triple("Paid", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
         LoanStatus.OVERDUE -> Triple("Overdue", MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
         LoanStatus.DECLINED -> Triple("Declined", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
         LoanStatus.DELETED -> Triple("Deleted", MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
     }
-    Box(
+    Row(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(bg)
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, color = fg, style = MaterialTheme.typography.labelLarge)
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(fg.copy(alpha = 0.8f))
+        )
+        Spacer(Modifier.size(6.dp))
+        Text(label, color = fg, style = MaterialTheme.typography.labelMedium)
     }
 }

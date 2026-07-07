@@ -1,7 +1,8 @@
 package com.nojus.loantracker.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -19,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.PersonOutline
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,13 +32,14 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -54,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
@@ -63,6 +67,8 @@ import com.nojus.loantracker.data.SavedContact
 import com.nojus.loantracker.data.installmentCountFor
 import com.nojus.loantracker.ui.LoanViewModel
 import com.nojus.loantracker.ui.formatDate
+import com.nojus.loantracker.ui.formatMoney
+import com.nojus.loantracker.ui.theme.LedgerSerif
 import com.nojus.loantracker.ui.todayPlusDays
 
 object CreateLoanTestTags {
@@ -90,6 +96,10 @@ fun CreateLoanScreen(
     var showDate by remember { mutableStateOf(false) }
     var contactDropdownOpen by remember { mutableStateOf(false) }
 
+    val emailInvalid = borrowerEmail.isNotBlank() && !borrowerEmail.contains("@")
+    val amountInvalid = amountText.isNotBlank() && (amountText.toDoubleOrNull() ?: 0.0) <= 0.0
+    val multiplierInvalid = multiplierText.isNotBlank() && (multiplierText.toDoubleOrNull() ?: 0.0) <= 0.0
+
     val canSubmit by remember {
         derivedStateOf {
             borrowerEmail.contains("@") &&
@@ -106,6 +116,8 @@ fun CreateLoanScreen(
         }
     }
 
+    val total = (amountText.toDoubleOrNull() ?: 0.0) * (multiplierText.toDoubleOrNull() ?: 1.0)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -118,6 +130,28 @@ fun CreateLoanScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
+            )
+        },
+        bottomBar = {
+            SubmitBar(
+                total = total,
+                dueAt = dueAt,
+                repaymentInterval = repaymentInterval,
+                working = action is LoanViewModel.ActionState.Working,
+                enabled = canSubmit && action !is LoanViewModel.ActionState.Working,
+                errorMessage = (action as? LoanViewModel.ActionState.Error)?.message,
+                onSubmit = {
+                    viewModel.createLoan(
+                        borrowerEmail = borrowerEmail.trim(),
+                        borrowerName = borrowerName.trim(),
+                        principal = amountText.toDoubleOrNull() ?: 0.0,
+                        interestMultiplier = multiplierText.toDoubleOrNull() ?: 1.0,
+                        dueAt = dueAt,
+                        repaymentInterval = repaymentInterval,
+                        defaultConsequence = consequence,
+                        note = note
+                    )
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -136,6 +170,7 @@ fun CreateLoanScreen(
                     borrowerEmail = it
                     contactDropdownOpen = true
                 },
+                emailInvalid = emailInvalid,
                 borrowerName = borrowerName,
                 onBorrowerNameChange = { borrowerName = it },
                 contacts = contacts,
@@ -153,18 +188,27 @@ fun CreateLoanScreen(
             OutlinedTextField(
                 value = amountText,
                 onValueChange = { amountText = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.replace(',', '.') },
-                label = { Text("Principal (EUR)") },
+                label = { Text("Principal") },
+                prefix = { Text("€") },
+                isError = amountInvalid,
+                supportingText = if (amountInvalid) {
+                    { Text("Enter an amount above zero") }
+                } else null,
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
 
-            SectionLabel("One-time interest multiplier")
+            SectionLabel("One-time interest")
             OutlinedTextField(
                 value = multiplierText,
                 onValueChange = { multiplierText = it.filter { c -> c.isDigit() || c == '.' || c == ',' }.replace(',', '.') },
-                label = { Text("e.g. 1.10 means principal × 1.10") },
+                label = { Text("Multiplier — 1.10 means principal × 1.10") },
+                isError = multiplierInvalid,
+                supportingText = if (multiplierInvalid) {
+                    { Text("Multiplier must be above zero") }
+                } else null,
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -174,17 +218,13 @@ fun CreateLoanScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf(1.0 to "× 1.00", 1.05 to "+5%", 1.10 to "+10%", 1.25 to "+25%").forEach { (v, label) ->
-                    AssistChip(onClick = { multiplierText = v.toString() }, label = { Text(label) })
+                listOf(1.0 to "None", 1.05 to "+5%", 1.10 to "+10%", 1.25 to "+25%").forEach { (v, label) ->
+                    FilterChip(
+                        selected = multiplierText.toDoubleOrNull() == v,
+                        onClick = { multiplierText = v.toString() },
+                        label = { Text(label) }
+                    )
                 }
-            }
-            val total = (amountText.toDoubleOrNull() ?: 0.0) * (multiplierText.toDoubleOrNull() ?: 1.0)
-            if (total > 0) {
-                Text(
-                    "Total due: " + com.nojus.loantracker.ui.formatMoney(total),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
 
             SectionLabel("Due date")
@@ -201,7 +241,11 @@ fun CreateLoanScreen(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(7, 14, 30, 60, 90).forEach { d ->
-                    AssistChip(onClick = { dueAt = todayPlusDays(d) }, label = { Text("$d d") })
+                    FilterChip(
+                        selected = dueAt == todayPlusDays(d),
+                        onClick = { dueAt = todayPlusDays(d) },
+                        label = { Text("$d d") }
+                    )
                 }
             }
 
@@ -214,19 +258,6 @@ fun CreateLoanScreen(
                         label = { Text(interval.label) }
                     )
                 }
-            }
-            if (repaymentInterval != RepaymentInterval.NONE && total > 0) {
-                val installments = installmentCountFor(
-                    repaymentInterval, System.currentTimeMillis(), dueAt
-                )
-                Text(
-                    if (installments == 1)
-                        "Due within one ${repaymentInterval.per} — a single payment of ${com.nojus.loantracker.ui.formatMoney(total)}"
-                    else
-                        "$installments payments of ${com.nojus.loantracker.ui.formatMoney(total / installments)} — one every ${repaymentInterval.per} until ${formatDate(dueAt)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
 
             SectionLabel("If not paid by the due date")
@@ -251,41 +282,6 @@ fun CreateLoanScreen(
             )
 
             Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = {
-                    viewModel.createLoan(
-                        borrowerEmail = borrowerEmail.trim(),
-                        borrowerName = borrowerName.trim(),
-                        principal = amountText.toDoubleOrNull() ?: 0.0,
-                        interestMultiplier = multiplierText.toDoubleOrNull() ?: 1.0,
-                        dueAt = dueAt,
-                        repaymentInterval = repaymentInterval,
-                        defaultConsequence = consequence,
-                        note = note
-                    )
-                },
-                enabled = canSubmit && action !is LoanViewModel.ActionState.Working,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                if (action is LoanViewModel.ActionState.Working) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text("Send loan offer")
-                }
-            }
-            (action as? LoanViewModel.ActionState.Error)?.let {
-                Text(it.message, color = MaterialTheme.colorScheme.error)
-            }
-            Spacer(Modifier.height(24.dp))
         }
     }
 
@@ -304,6 +300,105 @@ fun CreateLoanScreen(
     }
 }
 
+/**
+ * Sticky footer: live loan summary + submit. Keeps the numbers in sight while
+ * the form scrolls, so there are no surprises at the moment of sending.
+ */
+@Composable
+private fun SubmitBar(
+    total: Double,
+    dueAt: Long,
+    repaymentInterval: RepaymentInterval,
+    working: Boolean,
+    enabled: Boolean,
+    errorMessage: String?,
+    onSubmit: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .animateContentSize()
+        ) {
+            AnimatedVisibility(visible = total > 0) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "TOTAL DUE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                formatMoney(total),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontFamily = LedgerSerif
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "by ${formatDate(dueAt)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (repaymentInterval != RepaymentInterval.NONE) {
+                                val installments = installmentCountFor(
+                                    repaymentInterval, System.currentTimeMillis(), dueAt
+                                )
+                                Text(
+                                    if (installments == 1)
+                                        "single payment"
+                                    else
+                                        "$installments × ${formatMoney(total / installments)} per ${repaymentInterval.per}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                }
+            }
+            if (errorMessage != null) {
+                Text(
+                    errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            Button(
+                onClick = onSubmit,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                if (working) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Send loan offer")
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BorrowerInputFields(
@@ -315,7 +410,8 @@ fun BorrowerInputFields(
     contactDropdownOpen: Boolean,
     onContactDropdownOpenChange: (Boolean) -> Unit,
     onContactSelected: (SavedContact) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    emailInvalid: Boolean = false
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var emailFieldFocused by remember { mutableStateOf(false) }
@@ -359,6 +455,10 @@ fun BorrowerInputFields(
                 label = { Text("Email") },
                 placeholder = { Text("name@example.com") },
                 leadingIcon = { Icon(Icons.Filled.PersonOutline, contentDescription = null) },
+                isError = emailInvalid,
+                supportingText = if (emailInvalid) {
+                    { Text("That doesn't look like an email address") }
+                } else null,
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -405,8 +505,9 @@ fun BorrowerInputFields(
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text = text,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onBackground
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp)
     )
 }

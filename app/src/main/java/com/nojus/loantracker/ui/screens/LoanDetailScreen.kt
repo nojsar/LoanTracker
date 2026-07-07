@@ -1,5 +1,6 @@
 package com.nojus.loantracker.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +27,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -31,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseUser
@@ -50,7 +56,9 @@ import com.nojus.loantracker.data.Loan
 import com.nojus.loantracker.data.LoanRepository
 import com.nojus.loantracker.data.LoanStatus
 import com.nojus.loantracker.data.RepaymentInterval
+import com.nojus.loantracker.ui.DueUrgency
 import com.nojus.loantracker.ui.LoanViewModel
+import com.nojus.loantracker.ui.dueUrgency
 import com.nojus.loantracker.ui.formatDate
 import com.nojus.loantracker.ui.formatMoney
 import com.nojus.loantracker.ui.humanizeUntil
@@ -97,7 +105,7 @@ fun LoanDetailScreen(
         val current = loan
         if (current == null) {
             Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CircularProgressIndicator()
             }
             return@Scaffold
         }
@@ -114,6 +122,10 @@ fun LoanDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             AmountCard(current)
+
+            if (current.repaymentInterval != RepaymentInterval.NONE) {
+                ScheduleCard(current)
+            }
 
             DetailsCard(current, youAreLender)
 
@@ -166,20 +178,29 @@ fun LoanDetailScreen(
 private fun AmountCard(loan: Loan) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.padding(20.dp).fillMaxWidth(),
+            modifier = Modifier
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    )
+                )
+                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "Total due",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                "TOTAL DUE",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 formatMoney(loan.totalDue, loan.currency),
                 style = MaterialTheme.typography.displayLarge,
@@ -190,7 +211,7 @@ private fun AmountCard(loan: Loan) {
                 Text(
                     "${formatMoney(loan.principal, loan.currency)} × ${"%.2f".format(loan.interestMultiplier)}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                 )
             }
             if (loan.repaymentInterval != RepaymentInterval.NONE) {
@@ -198,17 +219,120 @@ private fun AmountCard(loan: Loan) {
                 Text(
                     "${loan.installmentCount} × ${formatMoney(loan.installmentAmount, loan.currency)} — one every ${loan.repaymentInterval.per}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             StatusChip(loan.status)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
+            val urgency = dueUrgency(loan.dueAt)
+            val deadlineMatters = loan.status == LoanStatus.ACTIVE || loan.status == LoanStatus.PENDING
             Text(
                 "Due ${formatDate(loan.dueAt)} · ${humanizeUntil(loan.dueAt)}",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                color = if (deadlineMatters && urgency != DueUrgency.Normal)
+                    MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onPrimaryContainer,
+                fontWeight = if (deadlineMatters && urgency != DueUrgency.Normal)
+                    FontWeight.SemiBold
+                else null
             )
+        }
+    }
+}
+
+/** The concrete payment plan, with the next payment highlighted. */
+@Composable
+private fun ScheduleCard(loan: Loan) {
+    val schedule = loan.paymentSchedule()
+    val now = System.currentTimeMillis()
+    val nextNumber = schedule.firstOrNull { it.dueAt >= now }?.number
+    val settled = loan.status == LoanStatus.PAID ||
+        loan.status == LoanStatus.DELETED || loan.status == LoanStatus.DECLINED
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Payments,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    "Payment plan",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    loan.repaymentInterval.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            schedule.forEachIndexed { i, payment ->
+                val isNext = !settled && payment.number == nextNumber
+                val isPast = !settled && payment.dueAt < now
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isNext) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                "${payment.number}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isNext) MaterialTheme.colorScheme.onPrimary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            formatDate(payment.dueAt),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isNext) FontWeight.SemiBold else null,
+                            color = when {
+                                isPast -> MaterialTheme.colorScheme.error
+                                settled -> MaterialTheme.colorScheme.onSurfaceVariant
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                        if (isNext) {
+                            Text(
+                                "next payment · ${humanizeUntil(payment.dueAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    Text(
+                        formatMoney(payment.amount, loan.currency),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (isNext) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (settled) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (i < schedule.lastIndex) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 40.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -376,8 +500,8 @@ private fun ActionButtons(
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.tertiary,
-                    contentColor = MaterialTheme.colorScheme.onTertiary
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             ) { Text("Mark as paid") }
         }

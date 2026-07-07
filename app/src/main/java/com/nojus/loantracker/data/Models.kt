@@ -2,6 +2,7 @@ package com.nojus.loantracker.data
 
 import com.google.firebase.firestore.DocumentId
 import kotlin.math.ceil
+import kotlin.math.floor
 
 enum class LoanStatus { PENDING, ACTIVE, PAID, OVERDUE, DECLINED, DELETED }
 
@@ -74,7 +75,27 @@ data class Loan(
 ) {
     val totalDue: Double get() = principal * interestMultiplier
     val installmentAmount: Double get() = totalDue / installmentCount.coerceAtLeast(1)
+
+    /**
+     * Concrete payment plan: equal cent-rounded installments spaced [repaymentInterval]
+     * apart, ending exactly on [dueAt]. The last payment absorbs the rounding remainder
+     * so the amounts always sum to [totalDue].
+     */
+    fun paymentSchedule(): List<ScheduledPayment> {
+        val count = installmentCount.coerceAtLeast(1)
+        val intervalMillis = (repaymentInterval.days ?: 0) * MILLIS_PER_DAY
+        val perPayment = floor(totalDue / count * 100) / 100
+        return List(count) { i ->
+            ScheduledPayment(
+                number = i + 1,
+                dueAt = dueAt - (count - 1 - i) * intervalMillis,
+                amount = if (i == count - 1) totalDue - perPayment * (count - 1) else perPayment
+            )
+        }
+    }
 }
+
+data class ScheduledPayment(val number: Int, val dueAt: Long, val amount: Double)
 
 /** A borrower email a given lender has previously sent a loan to. */
 data class SavedContact(
