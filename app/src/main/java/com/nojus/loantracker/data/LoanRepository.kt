@@ -55,18 +55,28 @@ class LoanRepository(
         val participants = listOf(loan.lenderEmail.lowercase(), loan.borrowerEmail.lowercase())
         val toSave = loan.copy(id = ref.id, participants = participants)
         ref.set(toSave).await()
+        val creatorUid = if (loan.kind == LoanKind.REQUEST) loan.borrowerUid else loan.lenderUid
+        val counterpartyEmail = if (loan.kind == LoanKind.REQUEST) loan.lenderEmail else loan.borrowerEmail
+        val counterpartyName = if (loan.kind == LoanKind.REQUEST) loan.lenderName else loan.borrowerName
         // Best-effort; don't fail loan creation if contact write is denied.
-        runCatching { rememberContact(loan.lenderUid, loan.borrowerEmail, loan.borrowerName) }
+        runCatching { rememberContact(creatorUid, counterpartyEmail, counterpartyName) }
             .onFailure { Log.w(TAG, "rememberContact failed", it) }
         return ref.id
     }
 
-    suspend fun acceptLoan(loanId: String, borrowerUid: String, borrowerName: String) {
+    /**
+     * Accepting fills in the acceptor's identity: the borrower for offers,
+     * the lender for requests.
+     */
+    suspend fun acceptLoan(loanId: String, kind: LoanKind, acceptorUid: String, acceptorName: String) {
+        val identity = if (kind == LoanKind.REQUEST) {
+            mapOf("lenderUid" to acceptorUid, "lenderName" to acceptorName)
+        } else {
+            mapOf("borrowerUid" to acceptorUid, "borrowerName" to acceptorName)
+        }
         loans.document(loanId).update(
-            mapOf(
+            identity + mapOf(
                 "status" to LoanStatus.ACTIVE.name,
-                "borrowerUid" to borrowerUid,
-                "borrowerName" to borrowerName,
                 "acceptedAt" to System.currentTimeMillis()
             )
         ).await()

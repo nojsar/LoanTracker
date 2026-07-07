@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseUser
 import com.nojus.loantracker.data.Loan
+import com.nojus.loantracker.data.LoanKind
 import com.nojus.loantracker.data.LoanRepository
 import com.nojus.loantracker.data.LoanStatus
 import com.nojus.loantracker.data.RepaymentInterval
@@ -88,8 +89,12 @@ fun LoanDetailScreen(
                     val current = loan
                     val isLender = current != null &&
                         current.lenderEmail.equals(user.email.orEmpty(), ignoreCase = true)
+                    // Creators can withdraw their own pending offer/request.
+                    val canWithdraw = current != null &&
+                        current.isCreator(user.email.orEmpty()) &&
+                        current.status == LoanStatus.PENDING
                     val notAlreadyDeleted = current?.status != LoanStatus.DELETED
-                    if (isLender && notAlreadyDeleted) {
+                    if ((isLender || canWithdraw) && notAlreadyDeleted) {
                         IconButton(onClick = { confirmDelete = true }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete loan")
                         }
@@ -111,7 +116,7 @@ fun LoanDetailScreen(
         }
 
         val youAreLender = current.lenderEmail.equals(user.email, ignoreCase = true)
-        val youAreBorrower = current.borrowerEmail.equals(user.email, ignoreCase = true)
+        val youAreCreator = current.isCreator(user.email.orEmpty())
 
         Column(
             modifier = Modifier
@@ -127,7 +132,7 @@ fun LoanDetailScreen(
                 ScheduleCard(current)
             }
 
-            DetailsCard(current, youAreLender)
+            DetailsCard(current, youAreLender, youAreCreator)
 
             if (current.defaultConsequence.isNotBlank()) {
                 ConsequenceCard(current.defaultConsequence)
@@ -140,8 +145,8 @@ fun LoanDetailScreen(
             ActionButtons(
                 loan = current,
                 youAreLender = youAreLender,
-                youAreBorrower = youAreBorrower,
-                onAccept = { viewModel.acceptLoan(current.id) },
+                youAreCreator = youAreCreator,
+                onAccept = { viewModel.acceptLoan(current) },
                 onDecline = { viewModel.declineLoan(current.id) },
                 onMarkPaid = { viewModel.markPaid(current.id) }
             )
@@ -152,8 +157,9 @@ fun LoanDetailScreen(
 
     if (confirmDelete) {
         val current = loan
+        val pendingWord = if (current?.kind == LoanKind.REQUEST) "request" else "offer"
         val explanation = when (current?.status) {
-            LoanStatus.PENDING -> "The offer will be withdrawn. It moves to history with a Deleted tag — turn on \"Show loan history\" to find it."
+            LoanStatus.PENDING -> "The $pendingWord will be withdrawn. It moves to history with a Deleted tag — turn on \"Show loan history\" to find it."
             LoanStatus.ACTIVE -> "This marks the loan as deleted on both sides. Use only if you've settled it outside the app. It stays in history under a Deleted tag."
             LoanStatus.PAID, LoanStatus.DECLINED, LoanStatus.OVERDUE, LoanStatus.DELETED, null ->
                 "Moves the loan to history with a Deleted tag on both sides."
@@ -223,7 +229,7 @@ private fun AmountCard(loan: Loan) {
                 )
             }
             Spacer(Modifier.height(12.dp))
-            StatusChip(loan.status)
+            StatusChip(loan.status, loan.kind)
             Spacer(Modifier.height(10.dp))
             val urgency = dueUrgency(loan.dueAt)
             val deadlineMatters = loan.status == LoanStatus.ACTIVE || loan.status == LoanStatus.PENDING
@@ -338,7 +344,7 @@ private fun ScheduleCard(loan: Loan) {
 }
 
 @Composable
-private fun DetailsCard(loan: Loan, youAreLender: Boolean) {
+private fun DetailsCard(loan: Loan, youAreLender: Boolean, youAreCreator: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -346,9 +352,14 @@ private fun DetailsCard(loan: Loan, youAreLender: Boolean) {
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            DetailRow("Lender", if (youAreLender) "You" else loan.lenderEmail)
+            DetailRow("Lender", if (youAreLender) "You" else loan.lenderEmail.ifBlank { "—" })
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             DetailRow("Borrower", if (!youAreLender) "You" else loan.borrowerEmail)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            DetailRow(
+                if (loan.kind == LoanKind.REQUEST) "Requested by" else "Offered by",
+                if (youAreCreator) "You" else loan.creatorEmail
+            )
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             DetailRow("Principal", formatMoney(loan.principal, loan.currency))
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -460,13 +471,13 @@ private fun NoteCard(text: String) {
 private fun ActionButtons(
     loan: Loan,
     youAreLender: Boolean,
-    youAreBorrower: Boolean,
+    youAreCreator: Boolean,
     onAccept: () -> Unit,
     onDecline: () -> Unit,
     onMarkPaid: () -> Unit
 ) {
     when {
-        youAreBorrower && loan.status == LoanStatus.PENDING -> {
+        !youAreCreator && loan.status == LoanStatus.PENDING -> {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -484,12 +495,15 @@ private fun ActionButtons(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     )
-                ) { Text("Accept loan") }
+                ) {
+                    Text(if (loan.kind == LoanKind.REQUEST) "Accept & lend" else "Accept loan")
+                }
             }
         }
-        youAreLender && loan.status == LoanStatus.PENDING -> {
+        youAreCreator && loan.status == LoanStatus.PENDING -> {
             Text(
-                "Waiting for ${loan.borrowerEmail} to accept.",
+                "Waiting for ${loan.recipientEmail} to accept your " +
+                    (if (loan.kind == LoanKind.REQUEST) "request." else "offer."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -7,6 +7,13 @@ import kotlin.math.floor
 enum class LoanStatus { PENDING, ACTIVE, PAID, OVERDUE, DECLINED, DELETED }
 
 /**
+ * Who initiated the loan: a lender offering money (OFFER) or a borrower asking
+ * for it (REQUEST). The other participant accepts or declines. Loans created
+ * before this field existed deserialize as OFFER, which matches their history.
+ */
+enum class LoanKind { OFFER, REQUEST }
+
+/**
  * How the borrower pays the loan back. NONE = single payment on the due date.
  * MONTHLY uses a 30-day approximation so installment math stays calendar-independent.
  */
@@ -65,6 +72,7 @@ data class Loan(
     val repaymentInterval: RepaymentInterval = RepaymentInterval.NONE,
     val installmentCount: Int = 1,
     val note: String = "",
+    val kind: LoanKind = LoanKind.OFFER,
     val status: LoanStatus = LoanStatus.PENDING,
     val createdAt: Long = System.currentTimeMillis(),
     val acceptedAt: Long? = null,
@@ -75,6 +83,16 @@ data class Loan(
 ) {
     val totalDue: Double get() = principal * interestMultiplier
     val installmentAmount: Double get() = totalDue / installmentCount.coerceAtLeast(1)
+
+    /** The participant who created this loan: lender for offers, borrower for requests. */
+    val creatorEmail: String get() =
+        if (kind == LoanKind.REQUEST) borrowerEmail else lenderEmail
+
+    /** The participant who must respond to a pending loan. */
+    val recipientEmail: String get() =
+        if (kind == LoanKind.REQUEST) lenderEmail else borrowerEmail
+
+    fun isCreator(email: String): Boolean = creatorEmail.equals(email, ignoreCase = true)
 
     /**
      * Concrete payment plan: equal cent-rounded installments spaced [repaymentInterval]

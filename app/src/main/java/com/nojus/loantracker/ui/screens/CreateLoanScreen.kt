@@ -39,6 +39,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +65,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nojus.loantracker.data.LoanKind
 import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.data.SavedContact
 import com.nojus.loantracker.data.installmentCountFor
@@ -85,6 +89,7 @@ fun CreateLoanScreen(
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
     val action by viewModel.action.collectAsStateWithLifecycle()
 
+    var kind by remember { mutableStateOf(LoanKind.OFFER) }
     var borrowerEmail by remember { mutableStateOf("") }
     var borrowerName by remember { mutableStateOf("") }
     var amountText by remember { mutableStateOf("") }
@@ -134,6 +139,7 @@ fun CreateLoanScreen(
         },
         bottomBar = {
             SubmitBar(
+                kind = kind,
                 total = total,
                 dueAt = dueAt,
                 repaymentInterval = repaymentInterval,
@@ -142,8 +148,9 @@ fun CreateLoanScreen(
                 errorMessage = (action as? LoanViewModel.ActionState.Error)?.message,
                 onSubmit = {
                     viewModel.createLoan(
-                        borrowerEmail = borrowerEmail.trim(),
-                        borrowerName = borrowerName.trim(),
+                        kind = kind,
+                        counterpartyEmail = borrowerEmail.trim(),
+                        counterpartyName = borrowerName.trim(),
                         principal = amountText.toDoubleOrNull() ?: 0.0,
                         interestMultiplier = multiplierText.toDoubleOrNull() ?: 1.0,
                         dueAt = dueAt,
@@ -164,6 +171,29 @@ fun CreateLoanScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = kind == LoanKind.OFFER,
+                    onClick = { kind = LoanKind.OFFER },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    label = { Text("Offer a loan") }
+                )
+                SegmentedButton(
+                    selected = kind == LoanKind.REQUEST,
+                    onClick = { kind = LoanKind.REQUEST },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    label = { Text("Request a loan") }
+                )
+            }
+            Text(
+                if (kind == LoanKind.OFFER)
+                    "You lend money — the borrower accepts your terms."
+                else
+                    "You ask to borrow — the lender accepts your terms.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             BorrowerInputFields(
                 borrowerEmail = borrowerEmail,
                 onBorrowerEmailChange = {
@@ -171,6 +201,8 @@ fun CreateLoanScreen(
                     contactDropdownOpen = true
                 },
                 emailInvalid = emailInvalid,
+                sectionLabel = if (kind == LoanKind.OFFER) "Borrower" else "Lender",
+                nameLabel = if (kind == LoanKind.OFFER) "Borrower name (optional)" else "Lender name (optional)",
                 borrowerName = borrowerName,
                 onBorrowerNameChange = { borrowerName = it },
                 contacts = contacts,
@@ -306,6 +338,7 @@ fun CreateLoanScreen(
  */
 @Composable
 private fun SubmitBar(
+    kind: LoanKind,
     total: Double,
     dueAt: Long,
     repaymentInterval: RepaymentInterval,
@@ -392,7 +425,7 @@ private fun SubmitBar(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Send loan offer")
+                    Text(if (kind == LoanKind.OFFER) "Send loan offer" else "Send loan request")
                 }
             }
         }
@@ -411,7 +444,9 @@ fun BorrowerInputFields(
     onContactDropdownOpenChange: (Boolean) -> Unit,
     onContactSelected: (SavedContact) -> Unit,
     modifier: Modifier = Modifier,
-    emailInvalid: Boolean = false
+    emailInvalid: Boolean = false,
+    sectionLabel: String = "Borrower",
+    nameLabel: String = "Borrower name (optional)"
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     var emailFieldFocused by remember { mutableStateOf(false) }
@@ -429,7 +464,7 @@ fun BorrowerInputFields(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SectionLabel("Borrower")
+        SectionLabel(sectionLabel)
         ExposedDropdownMenuBox(
             expanded = contactDropdownOpen && filtered.isNotEmpty(),
             onExpandedChange = { onContactDropdownOpenChange(it) }
@@ -494,7 +529,7 @@ fun BorrowerInputFields(
         OutlinedTextField(
             value = borrowerName,
             onValueChange = onBorrowerNameChange,
-            label = { Text("Borrower name (optional)") },
+            label = { Text(nameLabel) },
             singleLine = true,
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth()

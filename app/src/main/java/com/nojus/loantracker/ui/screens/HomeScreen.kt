@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.firebase.auth.FirebaseUser
 import com.nojus.loantracker.data.Loan
+import com.nojus.loantracker.data.LoanKind
 import com.nojus.loantracker.data.LoanStatus
 import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.ui.AuthViewModel
@@ -221,10 +222,10 @@ fun HomeScreen(
             ) { selected ->
                 val pending = if (selected == 0) lists.receivedPending else lists.sentPending
                 val other = if (selected == 0) lists.receivedOther else lists.sentOther
-                val youAreLender = selected == 1
+                val sentTab = selected == 1
 
                 if (pending.isEmpty() && other.isEmpty()) {
-                    EmptyState(youAreLender)
+                    EmptyState(sentTab)
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
@@ -232,15 +233,15 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         section(
-                            title = if (youAreLender) "Awaiting acceptance" else "Needs your response",
+                            title = if (sentTab) "Awaiting acceptance" else "Needs your response",
                             loans = pending,
-                            youAreLender = youAreLender,
+                            myEmail = user.email.orEmpty(),
                             onOpen = onOpenLoan
                         )
                         section(
                             title = "Active & history",
                             loans = other,
-                            youAreLender = youAreLender,
+                            myEmail = user.email.orEmpty(),
                             onOpen = onOpenLoan
                         )
                     }
@@ -253,7 +254,7 @@ fun HomeScreen(
 private fun LazyListScope.section(
     title: String,
     loans: List<Loan>,
-    youAreLender: Boolean,
+    myEmail: String,
     onOpen: (String) -> Unit
 ) {
     if (loans.isEmpty()) return
@@ -261,7 +262,8 @@ private fun LazyListScope.section(
     items(loans, key = { it.id }) { loan ->
         LoanRow(
             loan = loan,
-            youAreLender = youAreLender,
+            // Money direction, not tab: a request you sent is still money coming in.
+            youAreLender = loan.lenderEmail.equals(myEmail, ignoreCase = true),
             onClick = { onOpen(loan.id) },
             modifier = Modifier.animateItem()
         )
@@ -389,7 +391,7 @@ private fun SectionHeader(text: String) {
 }
 
 @Composable
-private fun EmptyState(youAreLender: Boolean) {
+private fun EmptyState(sentTab: Boolean) {
     Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
@@ -399,7 +401,7 @@ private fun EmptyState(youAreLender: Boolean) {
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (youAreLender) Icons.Filled.ArrowOutward else Icons.Outlined.Handshake,
+                        imageVector = if (sentTab) Icons.Filled.ArrowOutward else Icons.Outlined.Handshake,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(32.dp)
@@ -408,16 +410,16 @@ private fun EmptyState(youAreLender: Boolean) {
             }
             Spacer(Modifier.height(20.dp))
             Text(
-                text = if (youAreLender) "Nothing lent yet" else "Nothing borrowed yet",
+                text = if (sentTab) "Nothing sent yet" else "Nothing received yet",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = if (youAreLender)
-                    "Send a loan offer with \"New loan\" —\nyou'll both see the same terms."
+                text = if (sentTab)
+                    "Offer a loan or request one with \"New loan\" —\nyou'll both see the same terms."
                 else
-                    "Loan offers sent to your email\nwill show up here.",
+                    "Loan offers and requests sent to\nyour email will show up here.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -465,7 +467,7 @@ private fun LoanRow(
                     else null
                 )
                 Spacer(Modifier.height(6.dp))
-                StatusChip(loan.status)
+                StatusChip(loan.status, loan.kind)
             }
             Spacer(Modifier.size(12.dp))
             Column(horizontalAlignment = Alignment.End) {
@@ -536,9 +538,14 @@ private fun CounterpartyAvatar(loan: Loan, youAreLender: Boolean) {
 }
 
 @Composable
-fun StatusChip(status: LoanStatus) {
+fun StatusChip(status: LoanStatus, kind: LoanKind? = null) {
+    val pendingLabel = when (kind) {
+        LoanKind.OFFER -> "Offer"
+        LoanKind.REQUEST -> "Request"
+        null -> "Pending"
+    }
     val (label, bg, fg) = when (status) {
-        LoanStatus.PENDING -> Triple("Pending", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+        LoanStatus.PENDING -> Triple(pendingLabel, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
         LoanStatus.ACTIVE -> Triple("Active", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
         LoanStatus.PAID -> Triple("Paid", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
         LoanStatus.OVERDUE -> Triple("Overdue", MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)

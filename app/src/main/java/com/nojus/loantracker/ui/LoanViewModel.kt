@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.nojus.loantracker.data.Loan
+import com.nojus.loantracker.data.LoanKind
 import com.nojus.loantracker.data.LoanRepository
 import com.nojus.loantracker.data.LoanStatus
 import com.nojus.loantracker.data.RepaymentInterval
@@ -28,17 +29,21 @@ import kotlinx.coroutines.launch
 
 data class NextDeadline(val dueAt: Long, val total: Double, val count: Int)
 
+/**
+ * Sent/received is by who initiated the loan (offers you made + requests you
+ * made are both "sent"). The money summary is by role instead — an active loan
+ * you requested still counts toward what you owe.
+ */
 data class LoanLists(
     val sentPending: List<Loan> = emptyList(),
     val sentOther: List<Loan> = emptyList(),
     val receivedPending: List<Loan> = emptyList(),
-    val receivedOther: List<Loan> = emptyList()
+    val receivedOther: List<Loan> = emptyList(),
+    val activeLent: List<Loan> = emptyList(),
+    val activeBorrowed: List<Loan> = emptyList()
 ) {
     val sentCount: Int get() = sentPending.size + sentOther.size
     val receivedCount: Int get() = receivedPending.size + receivedOther.size
-
-    private val activeLent = sentOther.filter { it.status == LoanStatus.ACTIVE }
-    private val activeBorrowed = receivedOther.filter { it.status == LoanStatus.ACTIVE }
 
     val lentPrincipal: Double get() = activeLent.sumOf { it.principal }
     val lentExpectedReturn: Double get() = activeLent.sumOf { it.totalDue }
@@ -94,11 +99,11 @@ class LoanViewModel(
             ) { list, history ->
                 _streamError.value = null
                 val sorted = list.sortedByDescending { it.createdAt }
-                val sent = sorted.filter { it.lenderEmail.lowercase() == email }
-                // Always hide DECLINED loans from the borrower — that's what
-                // "decline" means for them. Lender keeps the record.
+                val sent = sorted.filter { it.isCreator(email) }
+                // Always hide DECLINED loans from the recipient — that's what
+                // "decline" means for them. The creator keeps the record.
                 val received = sorted
-                    .filter { it.borrowerEmail.lowercase() == email }
+                    .filter { !it.isCreator(email) }
                     .filter { it.status != LoanStatus.DECLINED }
 
                 // History off: only active/pending. DELETED only ever shows in history.
@@ -112,7 +117,13 @@ class LoanViewModel(
                     sentPending = sentVisible.filter { it.status == LoanStatus.PENDING },
                     sentOther = sentVisible.filter { it.status != LoanStatus.PENDING },
                     receivedPending = receivedVisible.filter { it.status == LoanStatus.PENDING },
-                    receivedOther = receivedVisible.filter { it.status != LoanStatus.PENDING }
+                    receivedOther = receivedVisible.filter { it.status != LoanStatus.PENDING },
+                    activeLent = sorted.filter {
+                        it.status == LoanStatus.ACTIVE && it.lenderEmail.lowercase() == email
+                    },
+                    activeBorrowed = sorted.filter {
+                        it.status == LoanStatus.ACTIVE && it.borrowerEmail.lowercase() == email
+                    }
                 )
             }.catch { t ->
                 Log.e("LoanVM", "loans flow error", t)
@@ -144,8 +155,9 @@ class LoanViewModel(
     fun clearAction() { _action.value = ActionState.Idle }
 
     fun createLoan(
-        borrowerEmail: String,
-        borrowerName: String,
+        kind: LoanKind,
+        counterpartyEmail: String,
+        counterpartyName: String,
         principal: Double,
         interestMultiplier: Double,
         dueAt: Long,
@@ -156,41 +168,55 @@ class LoanViewModel(
         val user = auth.currentUser ?: run {
             _action.value = ActionState.Error("Not signed in"); return
         }
-        if (borrowerEmail.equals(user.email.orEmpty(), ignoreCase = true)) {
-            _action.value = ActionState.Error("You can't lend to yourself"); return
+        if (counterpartyEmail.equals(user.email.orEmpty(), ignoreCase = true)) {
+            _action.value = ActionState.Error("You can't send a loan to yourself"); return
+        }
+        val myEmail = user.email.orEmpty().lowercase()
+        val myName = user.displayName.orEmpty()
+        val otherEmail = counterpartyEmail.trim().lowercase()
+        val otherName = counterpartyName.trim()
+        val base = Loan(
+            kind = kind,
+            principal = principal,
+            interestMultiplier = interestMultiplier,
+            dueAt = dueAt,
+            repaymentInterval = repaymentInterval,
+            installmentCount = installmentCountFor(
+                repaymentInterval, System.currentTimeMillis(), dueAt
+            ),
+            defaultConsequence = defaultConsequence.trim(),
+            note = note.trim(),
+            status = LoanStatus.PENDING
+        )
+        val loan = when (kind) {
+            LoanKind.OFFER -> base.copy(
+                lenderUid = user.uid,
+                lenderEmail = myEmail,
+                lenderName = myName,
+                borrowerEmail = otherEmail,
+                borrowerName = otherName
+            )
+            LoanKind.REQUEST -> base.copy(
+                borrowerUid = user.uid,
+                borrowerEmail = myEmail,
+                borrowerName = myName,
+                lenderEmail = otherEmail,
+                lenderName = otherName
+            )
         }
         _action.value = ActionState.Working
         viewModelScope.launch {
-            runCatching {
-                repo.createLoan(
-                    Loan(
-                        lenderUid = user.uid,
-                        lenderEmail = user.email.orEmpty().lowercase(),
-                        lenderName = user.displayName.orEmpty(),
-                        borrowerEmail = borrowerEmail.trim().lowercase(),
-                        borrowerName = borrowerName.trim(),
-                        principal = principal,
-                        interestMultiplier = interestMultiplier,
-                        dueAt = dueAt,
-                        repaymentInterval = repaymentInterval,
-                        installmentCount = installmentCountFor(
-                            repaymentInterval, System.currentTimeMillis(), dueAt
-                        ),
-                        defaultConsequence = defaultConsequence.trim(),
-                        note = note.trim(),
-                        status = LoanStatus.PENDING
-                    )
-                )
-            }.onSuccess { _action.value = ActionState.Created(it) }
-              .onFailure { _action.value = ActionState.Error(it.message ?: "Failed") }
+            runCatching { repo.createLoan(loan) }
+                .onSuccess { _action.value = ActionState.Created(it) }
+                .onFailure { _action.value = ActionState.Error(it.message ?: "Failed") }
         }
     }
 
-    fun acceptLoan(loanId: String) {
+    fun acceptLoan(loan: Loan) {
         val user = auth.currentUser ?: return
         viewModelScope.launch {
             runCatching {
-                repo.acceptLoan(loanId, user.uid, user.displayName.orEmpty())
+                repo.acceptLoan(loan.id, loan.kind, user.uid, user.displayName.orEmpty())
             }.onFailure { _action.value = ActionState.Error(it.message ?: "Failed") }
         }
     }
