@@ -9,8 +9,10 @@ import com.google.firebase.auth.FirebaseAuth
 import com.nojus.loantracker.data.Loan
 import com.nojus.loantracker.data.LoanRepository
 import com.nojus.loantracker.data.LoanStatus
+import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.data.SavedContact
 import com.nojus.loantracker.data.SettingsRepository
+import com.nojus.loantracker.data.installmentCountFor
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -147,6 +149,7 @@ class LoanViewModel(
         principal: Double,
         interestMultiplier: Double,
         dueAt: Long,
+        repaymentInterval: RepaymentInterval,
         defaultConsequence: String,
         note: String
     ) {
@@ -169,6 +172,10 @@ class LoanViewModel(
                         principal = principal,
                         interestMultiplier = interestMultiplier,
                         dueAt = dueAt,
+                        repaymentInterval = repaymentInterval,
+                        installmentCount = installmentCountFor(
+                            repaymentInterval, System.currentTimeMillis(), dueAt
+                        ),
                         defaultConsequence = defaultConsequence.trim(),
                         note = note.trim(),
                         status = LoanStatus.PENDING

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -48,6 +49,7 @@ import com.google.firebase.auth.FirebaseUser
 import com.nojus.loantracker.data.Loan
 import com.nojus.loantracker.data.LoanRepository
 import com.nojus.loantracker.data.LoanStatus
+import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.ui.LoanViewModel
 import com.nojus.loantracker.ui.formatDate
 import com.nojus.loantracker.ui.formatMoney
@@ -191,6 +193,14 @@ private fun AmountCard(loan: Loan) {
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
+            if (loan.repaymentInterval != RepaymentInterval.NONE) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "${loan.installmentCount} × ${formatMoney(loan.installmentAmount, loan.currency)} — one every ${loan.repaymentInterval.per}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
             Spacer(Modifier.height(8.dp))
             StatusChip(loan.status)
             Spacer(Modifier.height(8.dp))
@@ -222,6 +232,13 @@ private fun DetailsCard(loan: Loan, youAreLender: Boolean) {
                 "Interest multiplier",
                 if (loan.interestMultiplier == 1.0) "None" else "× ${"%.2f".format(loan.interestMultiplier)}",
                 icon = Icons.Filled.Bolt
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            DetailRow(
+                "Repayment",
+                if (loan.repaymentInterval == RepaymentInterval.NONE) "One-time"
+                else "${loan.repaymentInterval.label} · ${loan.installmentCount} × ${formatMoney(loan.installmentAmount, loan.currency)}",
+                icon = Icons.Filled.Payments
             )
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             DetailRow("Created", formatDate(loan.createdAt))

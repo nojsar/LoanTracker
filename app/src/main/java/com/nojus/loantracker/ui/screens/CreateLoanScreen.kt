@@ -3,6 +3,8 @@ package com.nojus.loantracker.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +29,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,7 +58,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.data.SavedContact
+import com.nojus.loantracker.data.installmentCountFor
 import com.nojus.loantracker.ui.LoanViewModel
 import com.nojus.loantracker.ui.formatDate
 import com.nojus.loantracker.ui.todayPlusDays
@@ -64,7 +69,7 @@ object CreateLoanTestTags {
     const val BorrowerEmailField = "create-loan-borrower-email"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CreateLoanScreen(
     viewModel: LoanViewModel,
@@ -79,6 +84,7 @@ fun CreateLoanScreen(
     var amountText by remember { mutableStateOf("") }
     var multiplierText by remember { mutableStateOf("1.0") }
     var dueAt by remember { mutableStateOf(todayPlusDays(30)) }
+    var repaymentInterval by remember { mutableStateOf(RepaymentInterval.NONE) }
     var consequence by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var showDate by remember { mutableStateOf(false) }
@@ -199,6 +205,30 @@ fun CreateLoanScreen(
                 }
             }
 
+            SectionLabel("Repayment")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RepaymentInterval.entries.forEach { interval ->
+                    FilterChip(
+                        selected = repaymentInterval == interval,
+                        onClick = { repaymentInterval = interval },
+                        label = { Text(interval.label) }
+                    )
+                }
+            }
+            if (repaymentInterval != RepaymentInterval.NONE && total > 0) {
+                val installments = installmentCountFor(
+                    repaymentInterval, System.currentTimeMillis(), dueAt
+                )
+                Text(
+                    if (installments == 1)
+                        "Due within one ${repaymentInterval.per} — a single payment of ${com.nojus.loantracker.ui.formatMoney(total)}"
+                    else
+                        "$installments payments of ${com.nojus.loantracker.ui.formatMoney(total / installments)} — one every ${repaymentInterval.per} until ${formatDate(dueAt)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             SectionLabel("If not paid by the due date")
             OutlinedTextField(
                 value = consequence,
@@ -229,6 +259,7 @@ fun CreateLoanScreen(
                         principal = amountText.toDoubleOrNull() ?: 0.0,
                         interestMultiplier = multiplierText.toDoubleOrNull() ?: 1.0,
                         dueAt = dueAt,
+                        repaymentInterval = repaymentInterval,
                         defaultConsequence = consequence,
                         note = note
                     )
