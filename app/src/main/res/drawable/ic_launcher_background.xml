@@ -1,47 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Minimalist flat pine background. A single solid fill, no gradient,
+     highlight, or vignette — the serif Euro carries the mark. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Warm ledger diagonal: deep pine into ledger gold. -->
-    <path android:pathData="M0,0h108v108H0z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="linear"
-                android:startX="0" android:startY="0"
-                android:endX="108" android:endY="108">
-                <item android:color="#1B5E43" android:offset="0.0" />
-                <item android:color="#7B5F0E" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Soft radial highlight, top-left, for depth. -->
-    <path android:pathData="M0,0h108v108H0z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="radial"
-                android:centerX="30" android:centerY="28"
-                android:gradientRadius="78">
-                <item android:color="#2EFFFFFF" android:offset="0.0" />
-                <item android:color="#00FFFFFF" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Subtle bottom-right vignette for richness. -->
-    <path android:pathData="M0,0h108v108H0z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="radial"
-                android:centerX="86" android:centerY="86"
-                android:gradientRadius="60">
-                <item android:color="#00000000" android:offset="0.0" />
-                <item android:color="#22000000" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
+    <path
+        android:fillColor="#1B5E43"
+        android:pathData="M0,0h108v108H0z" />
 </vector>

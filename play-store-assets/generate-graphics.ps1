@@ -1,6 +1,6 @@
 # Generates Google Play graphics and legacy launcher mipmaps that match the
 # in-app adaptive icon: a serif Euro (Instrument Serif, bundled in res/font)
-# on the warm-ledger pine-to-gold gradient.
+# on a minimalist flat pine background.
 #
 # Output:
 #   app-icon-512.png            (Play Store listing icon, full-bleed square)
@@ -32,24 +32,12 @@ function New-Canvas {
     return $bmp, $g
 }
 
-function Fill-LedgerGradient {
+function Fill-FlatPine {
     param($g, [float]$w, [float]$h)
-    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-        (New-Object System.Drawing.PointF(0, 0)),
-        (New-Object System.Drawing.PointF($w, $h)),
-        $PineGreen, $LedgerGold
-    )
+    # Minimalist: a single flat pine fill, no gradient/highlight/vignette.
+    $brush = New-Object System.Drawing.SolidBrush($PineGreen)
     $g.FillRectangle($brush, 0, 0, $w, $h)
     $brush.Dispose()
-
-    # Soft top-left highlight for depth, like the adaptive-icon background.
-    $hl = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $hl.AddEllipse($w * -0.45, $h * -0.45, $w * 1.2, $h * 1.2)
-    $pgb = New-Object System.Drawing.Drawing2D.PathGradientBrush($hl)
-    $pgb.CenterColor = [System.Drawing.Color]::FromArgb(0x2E, 255, 255, 255)
-    $pgb.SurroundColors = @([System.Drawing.Color]::FromArgb(0, 255, 255, 255))
-    $g.FillPath($pgb, $hl)
-    $pgb.Dispose(); $hl.Dispose()
 }
 
 # Returns a GraphicsPath of the Euro glyph scaled to $targetH tall and
@@ -75,7 +63,7 @@ function New-EuroPath {
 
 function Draw-IconInto {
     param($g, [float]$size)
-    Fill-LedgerGradient $g $size $size
+    Fill-FlatPine $g $size $size
     # Adaptive icons show ~72 of the 108dp canvas, where the glyph is 48 tall;
     # full-bleed renders match that proportion at 48/72 ≈ 0.65 of the height.
     $euro = New-EuroPath ($size / 2) ($size / 2) ($size * 0.62)
@@ -130,7 +118,7 @@ foreach ($d in $densities) {
 # ---------- FEATURE GRAPHIC 1024x500 ----------
 $feat, $gf = New-Canvas 1024 500
 $gf.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-Fill-LedgerGradient $gf 1024 500
+Fill-FlatPine $gf 1024 500
 
 # Big serif Euro as the left-side mark.
 $euro = New-EuroPath 235 250 300
