@@ -1,6 +1,6 @@
 # Generates Google Play graphics and legacy launcher mipmaps that match the
-# in-app adaptive icon: a serif Euro (Instrument Serif, bundled in res/font)
-# on a minimalist flat pine background.
+# in-app adaptive icon: a geometric Euro in thick round-capped strokes on a
+# diagonal deep-pine -> emerald gradient with soft accent circles.
 #
 # Output:
 #   app-icon-512.png            (Play Store listing icon, full-bleed square)
@@ -15,8 +15,8 @@ $outDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $resDir = Join-Path $outDir "..\app\src\main\res"
 $fontPath = Join-Path $resDir "font\instrument_serif.ttf"
 
-$PineGreen = [System.Drawing.Color]::FromArgb(255, 0x1B, 0x5E, 0x43)
-$LedgerGold = [System.Drawing.Color]::FromArgb(255, 0x7B, 0x5F, 0x0E)
+$DeepPine = [System.Drawing.Color]::FromArgb(255, 0x0C, 0x44, 0x33)
+$Emerald = [System.Drawing.Color]::FromArgb(255, 0x1F, 0xA2, 0x68)
 $Cream = [System.Drawing.Color]::FromArgb(255, 0xFD, 0xFB, 0xF5)
 
 $fonts = New-Object System.Drawing.Text.PrivateFontCollection
@@ -32,44 +32,59 @@ function New-Canvas {
     return $bmp, $g
 }
 
-function Fill-FlatPine {
+function Fill-ModernPine {
     param($g, [float]$w, [float]$h)
-    # Minimalist: a single flat pine fill, no gradient/highlight/vignette.
-    $brush = New-Object System.Drawing.SolidBrush($PineGreen)
-    $g.FillRectangle($brush, 0, 0, $w, $h)
+    # Diagonal gradient with two soft translucent circles, mirroring
+    # ic_launcher_background.xml.
+    $rect = New-Object System.Drawing.RectangleF(0, 0, $w, $h)
+    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+        (New-Object System.Drawing.PointF(0, 0)),
+        (New-Object System.Drawing.PointF($w, $h)),
+        $DeepPine, $Emerald
+    )
+    $g.FillRectangle($brush, $rect)
     $brush.Dispose()
+
+    $s = [Math]::Min($w, $h)
+    $soft1 = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(20, 255, 255, 255))
+    $r1 = $s * 0.352
+    $g.FillEllipse($soft1, $w - $r1, $s * 0.204 - $r1, $r1 * 2, $r1 * 2)
+    $soft1.Dispose()
+    $soft2 = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(13, 255, 255, 255))
+    $r2 = $s * 0.278
+    $g.FillEllipse($soft2, $s * 0.056 - $r2, $h - $s * 0.111 - $r2, $r2 * 2, $r2 * 2)
+    $soft2.Dispose()
 }
 
-# Returns a GraphicsPath of the Euro glyph scaled to $targetH tall and
-# centered at ($cx, $cy).
-function New-EuroPath {
-    param([float]$cx, [float]$cy, [float]$targetH)
-    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $fmt = [System.Drawing.StringFormat]::GenericTypographic
-    $path.AddString(
-        [string][char]0x20AC, $serif,
-        [int][System.Drawing.FontStyle]::Regular, 100,
-        (New-Object System.Drawing.PointF(0, 0)), $fmt
-    )
-    $b = $path.GetBounds()
-    $s = $targetH / $b.Height
-    $m = New-Object System.Drawing.Drawing2D.Matrix
-    $m.Translate($cx - $s * ($b.X + $b.Width / 2), $cy - $s * ($b.Y + $b.Height / 2))
-    $m.Scale($s, $s)
-    $path.Transform($m)
-    $m.Dispose()
-    return $path
+# Draws the geometric Euro mark centered at ($cx, $cy). $unit is one
+# adaptive-icon viewport unit; the mark is ~42.5 units tall (same proportions
+# as ic_launcher_foreground.xml, where 1 unit = visible-icon-size / 72).
+function Draw-EuroMark {
+    param($g, [float]$cx, [float]$cy, [float]$unit)
+    $pen = New-Object System.Drawing.Pen($Cream, (7.5 * $unit))
+    $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+    $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+
+    # C-arc open to the right: centered 2 units right of the mark center.
+    $r = 17.5 * $unit
+    $arcCx = $cx + 2 * $unit
+    $g.DrawArc($pen, $arcCx - $r, $cy - $r, $r * 2, $r * 2, 55, 250)
+
+    # The two Euro bars.
+    $x1 = $cx - 19 * $unit
+    $x2 = $cx + 3.5 * $unit
+    $dy = 5.4 * $unit
+    $g.DrawLine($pen, $x1, $cy - $dy, $x2, $cy - $dy)
+    $g.DrawLine($pen, $x1, $cy + $dy, $x2, $cy + $dy)
+    $pen.Dispose()
 }
 
 function Draw-IconInto {
     param($g, [float]$size)
-    Fill-FlatPine $g $size $size
-    # Adaptive icons show ~72 of the 108dp canvas, where the glyph is 48 tall;
-    # full-bleed renders match that proportion at 48/72 ≈ 0.65 of the height.
-    $euro = New-EuroPath ($size / 2) ($size / 2) ($size * 0.62)
-    $brush = New-Object System.Drawing.SolidBrush($Cream)
-    $g.FillPath($brush, $euro)
-    $brush.Dispose(); $euro.Dispose()
+    Fill-ModernPine $g $size $size
+    # Adaptive icons show ~72 of the 108dp canvas; full-bleed renders match
+    # that proportion with 1 viewport unit = size / 72.
+    Draw-EuroMark $g ($size / 2) ($size / 2) ($size / 72)
 }
 
 # ---------- APP ICON 512x512 (Play masks its own corners) ----------
@@ -118,15 +133,13 @@ foreach ($d in $densities) {
 # ---------- FEATURE GRAPHIC 1024x500 ----------
 $feat, $gf = New-Canvas 1024 500
 $gf.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-Fill-FlatPine $gf 1024 500
+Fill-ModernPine $gf 1024 500
 
-# Big serif Euro as the left-side mark.
-$euro = New-EuroPath 235 250 300
-$creamBrush = New-Object System.Drawing.SolidBrush($Cream)
-$gf.FillPath($creamBrush, $euro)
-$euro.Dispose()
+# Euro mark as the left-side brand block (~300px tall / 42.5 units).
+Draw-EuroMark $gf 235 250 (300 / 42.5)
 
 # Serif wordmark, drawn as a path so the private font renders reliably.
+$creamBrush = New-Object System.Drawing.SolidBrush($Cream)
 $title = New-Object System.Drawing.Drawing2D.GraphicsPath
 $title.AddString(
     "Loan Tracker", $serif,

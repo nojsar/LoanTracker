@@ -1,12 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Euro glyph outline from Instrument Serif (bundled in res/font, SIL OFL),
-     centered in the adaptive-icon safe zone. -->
+<!-- Geometric Euro drawn as thick round-capped strokes (C-arc open to the
+     right plus two bars), centered in the adaptive-icon safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#FDFBF5"
-        android:pathData="M40.08 58.97Q39.43 58.97 39.56 58.32L39.75 57.41Q39.88 56.76 40.6 56.76H44.5Q44.43 55.33 44.43 53.77Q44.43 52.47 44.5 51.17H40.08Q39.43 51.17 39.56 50.53L39.75 49.62Q39.88 48.97 40.6 48.97H44.69Q45.34 43.19 47.45 38.93Q49.56 34.68 52.61 32.34Q55.67 30 59.3 30Q61.45 30 63.4 30.49Q65.35 30.97 66.9 31.75Q67.68 32.21 67.68 33.12L67.88 42.99Q67.88 44.09 67.1 44.09Q66.38 44.09 66.19 43.25L65.54 40.85Q64.18 35.85 62.71 33.86Q61.25 31.88 58.91 31.88Q55.41 31.88 52.84 36.27Q50.28 40.65 49.69 48.97H60.86Q61.45 48.97 61.32 49.62L61.12 50.53Q60.99 51.17 60.34 51.17H49.56Q49.5 52.41 49.5 53.77Q49.5 55.33 49.56 56.76H59.24Q59.82 56.76 59.69 57.41L59.5 58.32Q59.37 58.97 58.72 58.97H49.69Q50.47 67.41 53.17 71.76Q55.86 76.12 58.98 76.12Q60.86 76.12 62.1 75.34Q63.33 74.56 64.21 72.61Q65.09 70.66 65.93 67.28L66.71 64.1Q66.9 63.13 67.75 63.26Q68.46 63.39 68.46 64.36L68.2 74.88Q68.2 75.79 67.36 76.25Q65.8 77.03 63.79 77.51Q61.77 78 59.11 78Q55.28 78 52.26 75.69Q49.24 73.39 47.29 69.1Q45.34 64.81 44.69 58.97Z" />
+        android:pathData="M66.04,39.66 A17.5,17.5 0 1,0 66.04,68.34"
+        android:strokeColor="#FDFBF5"
+        android:strokeWidth="7.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M35,48.6 L57.5,48.6"
+        android:strokeColor="#FDFBF5"
+        android:strokeWidth="7.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M35,59.4 L57.5,59.4"
+        android:strokeColor="#FDFBF5"
+        android:strokeWidth="7.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
 </vector>

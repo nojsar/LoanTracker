@@ -1,12 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Minimalist flat pine background. A single solid fill, no gradient,
-     highlight, or vignette — the serif Euro carries the mark. -->
+<!-- Modern fintech background: diagonal deep-pine → emerald gradient with two
+     soft translucent circles for depth. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108H0z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108">
+                <item android:offset="0" android:color="#FF0C4433" />
+                <item android:offset="1" android:color="#FF1FA268" />
+            </gradient>
+        </aapt:attr>
+    </path>
     <path
-        android:fillColor="#1B5E43"
-        android:pathData="M0,0h108v108H0z" />
+        android:fillColor="#14FFFFFF"
+        android:pathData="M108,22 m-38,0 a38,38 0 1,1 76,0 a38,38 0 1,1 -76,0" />
+    <path
+        android:fillColor="#0DFFFFFF"
+        android:pathData="M6,96 m-30,0 a30,30 0 1,1 60,0 a30,30 0 1,1 -60,0" />
 </vector>
