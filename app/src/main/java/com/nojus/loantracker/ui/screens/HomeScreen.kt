@@ -355,7 +355,7 @@ private fun StatCard(
                 HorizontalDivider(color = fg.copy(alpha = 0.2f))
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "NEXT DEADLINE",
+                    text = "NEXT PAYMENT",
                     style = MaterialTheme.typography.labelSmall,
                     color = fg.copy(alpha = 0.75f)
                 )
@@ -454,10 +454,18 @@ private fun LoanRow(
                     maxLines = 1
                 )
                 Spacer(Modifier.height(2.dp))
-                val urgency = dueUrgency(loan.dueAt)
+                // Active installment loans count down to the next payment step,
+                // not to the far-away final deadline.
+                val next = loan.nextPayment()
+                val stepDate = if (next != null && next.isInstallment) next.dueAt else loan.dueAt
+                val stepLabel = if (next != null && next.isInstallment)
+                    "Next ${formatMoney(next.amount, loan.currency)} · ${formatDate(stepDate)} · ${humanizeUntil(stepDate)}"
+                else
+                    "Due ${formatDate(stepDate)} · ${humanizeUntil(stepDate)}"
+                val urgency = dueUrgency(stepDate)
                 val deadlineMatters = loan.status == LoanStatus.ACTIVE || loan.status == LoanStatus.PENDING
                 Text(
-                    text = "Due ${formatDate(loan.dueAt)} · ${humanizeUntil(loan.dueAt)}",
+                    text = stepLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (deadlineMatters && urgency != DueUrgency.Normal)
                         MaterialTheme.colorScheme.error
@@ -471,11 +479,21 @@ private fun LoanRow(
             }
             Spacer(Modifier.size(12.dp))
             Column(horizontalAlignment = Alignment.End) {
+                val showRemaining = loan.status == LoanStatus.ACTIVE && loan.paidSoFar > 0
                 Text(
-                    text = formatMoney(loan.totalDue, loan.currency),
+                    text = formatMoney(
+                        if (showRemaining) loan.remainingDue else loan.totalDue,
+                        loan.currency
+                    ),
                     style = MaterialTheme.typography.headlineSmall
                 )
-                if (loan.repaymentInterval != RepaymentInterval.NONE) {
+                if (showRemaining) {
+                    Text(
+                        text = "of ${formatMoney(loan.totalDue, loan.currency)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (loan.repaymentInterval != RepaymentInterval.NONE) {
                     Text(
                         text = "${loan.installmentCount} × ${formatMoney(loan.installmentAmount, loan.currency)}",
                         style = MaterialTheme.typography.bodySmall,

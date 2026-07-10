@@ -215,6 +215,7 @@ dependencies {
     implementation(libs.googleid)
 
     implementation(libs.play.app.update)
+    implementation(libs.androidx.work.runtime)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

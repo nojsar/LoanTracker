@@ -25,7 +25,10 @@ object Routes {
 }
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    pendingLoanId: String? = null,
+    onPendingLoanConsumed: () -> Unit = {}
+) {
     val context = LocalContext.current
     val authViewModel: AuthViewModel = viewModel(factory = AuthViewModel.factory(context))
     val loanViewModel: LoanViewModel = viewModel(factory = LoanViewModel.factory(context))
@@ -33,7 +36,7 @@ fun AppNavigation() {
     val user by authViewModel.currentUser.collectAsStateWithLifecycle()
     val navController = rememberNavController()
 
-    LaunchedEffect(user) {
+    LaunchedEffect(user, pendingLoanId) {
         if (user == null) {
             navController.navigate(Routes.SIGN_IN) {
                 popUpTo(0) { inclusive = true }
@@ -44,6 +47,11 @@ fun AppNavigation() {
                 navController.navigate(Routes.HOME) {
                     popUpTo(0) { inclusive = true }
                 }
+            }
+            // A tapped notification lands on its loan, on top of Home.
+            if (pendingLoanId != null) {
+                navController.navigate(Routes.detail(pendingLoanId))
+                onPendingLoanConsumed()
             }
         }
     }

@@ -1,5 +1,9 @@
 package com.nojus.loantracker
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -7,18 +11,24 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateOf
+import androidx.core.content.ContextCompat
 import com.google.android.play.core.appupdate.AppUpdateInfo
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
+import com.nojus.loantracker.notifications.LoanNotifications
 import com.nojus.loantracker.ui.AppNavigation
 import com.nojus.loantracker.ui.theme.LoanTrackerTheme
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var appUpdateManager: AppUpdateManager
+
+    /** Loan a tapped notification wants opened; consumed by navigation. */
+    private val pendingLoanId = mutableStateOf<String?>(null)
 
     // Play returns the update flow through this launcher. For an IMMEDIATE update
     // Play drives its own full-screen UI; we only observe the final result code.
@@ -32,17 +42,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Denial just means no notifications; nothing to do. */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         appUpdateManager = AppUpdateManagerFactory.create(this)
         checkForImmediateUpdate()
+        requestNotificationPermissionIfNeeded()
+        pendingLoanId.value = intent?.getStringExtra(LoanNotifications.EXTRA_LOAN_ID)
 
         setContent {
             LoanTrackerTheme {
-                AppNavigation()
+                AppNavigation(
+                    pendingLoanId = pendingLoanId.value,
+                    onPendingLoanConsumed = { pendingLoanId.value = null }
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        pendingLoanId.value = intent.getStringExtra(LoanNotifications.EXTRA_LOAN_ID)
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

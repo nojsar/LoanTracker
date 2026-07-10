@@ -13,6 +13,7 @@ import com.nojus.loantracker.data.LoanStatus
 import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.data.SavedContact
 import com.nojus.loantracker.data.SettingsRepository
+import com.nojus.loantracker.data.installmentCountBetween
 import com.nojus.loantracker.data.installmentCountFor
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,20 +47,25 @@ data class LoanLists(
     val receivedCount: Int get() = receivedPending.size + receivedOther.size
 
     val lentPrincipal: Double get() = activeLent.sumOf { it.principal }
-    val lentExpectedReturn: Double get() = activeLent.sumOf { it.totalDue }
+    val lentExpectedReturn: Double get() = activeLent.sumOf { it.remainingDue }
     val owedPrincipal: Double get() = activeBorrowed.sumOf { it.principal }
-    val owedAtDue: Double get() = activeBorrowed.sumOf { it.totalDue }
+    val owedAtDue: Double get() = activeBorrowed.sumOf { it.remainingDue }
     val hasSummary: Boolean get() = activeLent.isNotEmpty() || activeBorrowed.isNotEmpty()
 
     val nextLentDeadline: NextDeadline? get() = nextDeadline(activeLent)
     val nextOwedDeadline: NextDeadline? get() = nextDeadline(activeBorrowed)
 
+    /**
+     * The nearest concrete payment step: for installment loans that's the next
+     * unpaid installment, not the final due date.
+     */
     private fun nextDeadline(loans: List<Loan>): NextDeadline? {
-        val earliest = loans.minOfOrNull { it.dueAt } ?: return null
-        val onThatDate = loans.filter { it.dueAt == earliest }
+        val upcoming = loans.mapNotNull { it.nextPayment() }
+        val earliest = upcoming.minOfOrNull { it.dueAt } ?: return null
+        val onThatDate = upcoming.filter { it.dueAt == earliest }
         return NextDeadline(
             dueAt = earliest,
-            total = onThatDate.sumOf { it.totalDue },
+            total = onThatDate.sumOf { it.amount },
             count = onThatDate.size
         )
     }
@@ -162,6 +168,7 @@ class LoanViewModel(
         interestMultiplier: Double,
         dueAt: Long,
         repaymentInterval: RepaymentInterval,
+        repaymentStartAt: Long?,
         defaultConsequence: String,
         note: String
     ) {
@@ -175,15 +182,19 @@ class LoanViewModel(
         val myName = user.displayName.orEmpty()
         val otherEmail = counterpartyEmail.trim().lowercase()
         val otherName = counterpartyName.trim()
+        val startAt = repaymentStartAt.takeIf { repaymentInterval != RepaymentInterval.NONE }
         val base = Loan(
             kind = kind,
             principal = principal,
             interestMultiplier = interestMultiplier,
             dueAt = dueAt,
             repaymentInterval = repaymentInterval,
-            installmentCount = installmentCountFor(
-                repaymentInterval, System.currentTimeMillis(), dueAt
-            ),
+            repaymentStartAt = startAt,
+            installmentCount = if (startAt != null) {
+                installmentCountBetween(repaymentInterval, startAt, dueAt)
+            } else {
+                installmentCountFor(repaymentInterval, System.currentTimeMillis(), dueAt)
+            },
             defaultConsequence = defaultConsequence.trim(),
             note = note.trim(),
             status = LoanStatus.PENDING
@@ -238,6 +249,27 @@ class LoanViewModel(
     fun deleteLoan(loanId: String) {
         viewModelScope.launch {
             runCatching { repo.deleteLoan(loanId) }
+                .onFailure { _action.value = ActionState.Error(it.message ?: "Failed") }
+        }
+    }
+
+    fun requestPayment(loanId: String, amount: Double) {
+        viewModelScope.launch {
+            runCatching { repo.requestPayment(loanId, amount) }
+                .onFailure { _action.value = ActionState.Error(it.message ?: "Failed") }
+        }
+    }
+
+    fun cancelPaymentRequest(loanId: String, paymentId: String) {
+        viewModelScope.launch {
+            runCatching { repo.cancelPaymentRequest(loanId, paymentId) }
+                .onFailure { _action.value = ActionState.Error(it.message ?: "Failed") }
+        }
+    }
+
+    fun respondToPayment(loanId: String, paymentId: String, confirm: Boolean) {
+        viewModelScope.launch {
+            runCatching { repo.respondToPayment(loanId, paymentId, confirm) }
                 .onFailure { _action.value = ActionState.Error(it.message ?: "Failed") }
         }
     }

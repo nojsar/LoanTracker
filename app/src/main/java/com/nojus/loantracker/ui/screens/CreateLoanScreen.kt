@@ -68,6 +68,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nojus.loantracker.data.LoanKind
 import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.data.SavedContact
+import com.nojus.loantracker.data.installmentCountBetween
 import com.nojus.loantracker.data.installmentCountFor
 import com.nojus.loantracker.ui.LoanViewModel
 import com.nojus.loantracker.ui.formatDate
@@ -96,21 +97,32 @@ fun CreateLoanScreen(
     var multiplierText by remember { mutableStateOf("1.0") }
     var dueAt by remember { mutableStateOf(todayPlusDays(30)) }
     var repaymentInterval by remember { mutableStateOf(RepaymentInterval.NONE) }
+    var repaymentStartAt by remember { mutableStateOf<Long?>(null) }
     var consequence by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var showDate by remember { mutableStateOf(false) }
+    var showStartDate by remember { mutableStateOf(false) }
     var contactDropdownOpen by remember { mutableStateOf(false) }
+
+    // Picking an interval suggests a first payment one interval from today,
+    // clamped so it never lands after the due date.
+    fun defaultStartFor(interval: RepaymentInterval): Long? =
+        interval.days?.let { minOf(todayPlusDays(it), dueAt) }
 
     val emailInvalid = borrowerEmail.isNotBlank() && !borrowerEmail.contains("@")
     val amountInvalid = amountText.isNotBlank() && (amountText.toDoubleOrNull() ?: 0.0) <= 0.0
     val multiplierInvalid = multiplierText.isNotBlank() && (multiplierText.toDoubleOrNull() ?: 0.0) <= 0.0
+    val startAfterDue = repaymentInterval != RepaymentInterval.NONE &&
+        (repaymentStartAt ?: 0L) > dueAt
 
     val canSubmit by remember {
         derivedStateOf {
             borrowerEmail.contains("@") &&
                 (amountText.toDoubleOrNull() ?: 0.0) > 0.0 &&
                 (multiplierText.toDoubleOrNull() ?: 0.0) > 0.0 &&
-                dueAt > System.currentTimeMillis()
+                dueAt > System.currentTimeMillis() &&
+                (repaymentInterval == RepaymentInterval.NONE ||
+                    (repaymentStartAt != null && repaymentStartAt!! <= dueAt))
         }
     }
 
@@ -143,6 +155,7 @@ fun CreateLoanScreen(
                 total = total,
                 dueAt = dueAt,
                 repaymentInterval = repaymentInterval,
+                repaymentStartAt = repaymentStartAt,
                 working = action is LoanViewModel.ActionState.Working,
                 enabled = canSubmit && action !is LoanViewModel.ActionState.Working,
                 errorMessage = (action as? LoanViewModel.ActionState.Error)?.message,
@@ -155,6 +168,7 @@ fun CreateLoanScreen(
                         interestMultiplier = multiplierText.toDoubleOrNull() ?: 1.0,
                         dueAt = dueAt,
                         repaymentInterval = repaymentInterval,
+                        repaymentStartAt = repaymentStartAt,
                         defaultConsequence = consequence,
                         note = note
                     )
@@ -286,8 +300,37 @@ fun CreateLoanScreen(
                 RepaymentInterval.entries.forEach { interval ->
                     FilterChip(
                         selected = repaymentInterval == interval,
-                        onClick = { repaymentInterval = interval },
+                        onClick = {
+                            repaymentInterval = interval
+                            repaymentStartAt = defaultStartFor(interval)
+                        },
                         label = { Text(interval.label) }
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = repaymentInterval != RepaymentInterval.NONE) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SectionLabel("First payment")
+                    OutlinedTextField(
+                        value = repaymentStartAt?.let { formatDate(it) } ?: "—",
+                        onValueChange = {},
+                        readOnly = true,
+                        isError = startAfterDue,
+                        supportingText = when {
+                            startAfterDue -> {
+                                { Text("First payment can't be after the due date") }
+                            }
+                            else -> {
+                                { Text("Payments repeat every ${repaymentInterval.per} from this day") }
+                            }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) },
+                        trailingIcon = {
+                            TextButton(onClick = { showStartDate = true }) { Text("Change") }
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -330,6 +373,22 @@ fun CreateLoanScreen(
             dismissButton = { TextButton(onClick = { showDate = false }) { Text("Cancel") } }
         ) { DatePicker(state = state) }
     }
+
+    if (showStartDate) {
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = repaymentStartAt ?: defaultStartFor(repaymentInterval)
+        )
+        DatePickerDialog(
+            onDismissRequest = { showStartDate = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { repaymentStartAt = it }
+                    showStartDate = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showStartDate = false }) { Text("Cancel") } }
+        ) { DatePicker(state = state) }
+    }
 }
 
 /**
@@ -342,6 +401,7 @@ private fun SubmitBar(
     total: Double,
     dueAt: Long,
     repaymentInterval: RepaymentInterval,
+    repaymentStartAt: Long?,
     working: Boolean,
     enabled: Boolean,
     errorMessage: String?,
@@ -383,9 +443,11 @@ private fun SubmitBar(
                                 fontWeight = FontWeight.Medium
                             )
                             if (repaymentInterval != RepaymentInterval.NONE) {
-                                val installments = installmentCountFor(
-                                    repaymentInterval, System.currentTimeMillis(), dueAt
-                                )
+                                val installments = if (repaymentStartAt != null) {
+                                    installmentCountBetween(repaymentInterval, repaymentStartAt, dueAt)
+                                } else {
+                                    installmentCountFor(repaymentInterval, System.currentTimeMillis(), dueAt)
+                                }
                                 Text(
                                     if (installments == 1)
                                         "single payment"

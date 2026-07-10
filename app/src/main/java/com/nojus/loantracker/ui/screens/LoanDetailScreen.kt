@@ -15,11 +15,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
@@ -34,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,12 +54,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseUser
+import com.nojus.loantracker.data.CENT_EPSILON
 import com.nojus.loantracker.data.Loan
 import com.nojus.loantracker.data.LoanKind
+import com.nojus.loantracker.data.LoanPayment
 import com.nojus.loantracker.data.LoanRepository
 import com.nojus.loantracker.data.LoanStatus
+import com.nojus.loantracker.data.PaymentStatus
 import com.nojus.loantracker.data.RepaymentInterval
 import com.nojus.loantracker.ui.DueUrgency
 import com.nojus.loantracker.ui.LoanViewModel
@@ -63,6 +71,10 @@ import com.nojus.loantracker.ui.dueUrgency
 import com.nojus.loantracker.ui.formatDate
 import com.nojus.loantracker.ui.formatMoney
 import com.nojus.loantracker.ui.humanizeUntil
+import java.util.Locale
+
+/** Which action is waiting for an "are you sure?" answer. */
+private enum class PendingConfirm { Accept, Decline, MarkPaid, ConfirmPayment, DeclinePayment, CancelPayRequest }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +87,8 @@ fun LoanDetailScreen(
     val repo = remember { LoanRepository() }
     val loan by repo.loanById(loanId).collectAsState(initial = null)
     var confirmDelete by remember { mutableStateOf(false) }
+    var pendingConfirm by remember { mutableStateOf<PendingConfirm?>(null) }
+    var payDialogOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -132,6 +146,21 @@ fun LoanDetailScreen(
                 ScheduleCard(current)
             }
 
+            current.pendingPayment?.let { payment ->
+                PendingPaymentCard(
+                    loan = current,
+                    payment = payment,
+                    youAreLender = youAreLender,
+                    onConfirm = { pendingConfirm = PendingConfirm.ConfirmPayment },
+                    onDecline = { pendingConfirm = PendingConfirm.DeclinePayment },
+                    onCancel = { pendingConfirm = PendingConfirm.CancelPayRequest }
+                )
+            }
+
+            if (current.payments.any { it.status != PaymentStatus.REQUESTED }) {
+                PaymentsCard(current)
+            }
+
             DetailsCard(current, youAreLender, youAreCreator)
 
             if (current.defaultConsequence.isNotBlank()) {
@@ -146,13 +175,58 @@ fun LoanDetailScreen(
                 loan = current,
                 youAreLender = youAreLender,
                 youAreCreator = youAreCreator,
-                onAccept = { viewModel.acceptLoan(current) },
-                onDecline = { viewModel.declineLoan(current.id) },
-                onMarkPaid = { viewModel.markPaid(current.id) }
+                onAccept = { pendingConfirm = PendingConfirm.Accept },
+                onDecline = { pendingConfirm = PendingConfirm.Decline },
+                onMarkPaid = { pendingConfirm = PendingConfirm.MarkPaid },
+                onPay = { payDialogOpen = true }
             )
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    val confirming = pendingConfirm
+    val currentLoan = loan
+    if (confirming != null && currentLoan != null) {
+        ConfirmActionDialog(
+            confirm = confirming,
+            loan = currentLoan,
+            onDismiss = { pendingConfirm = null },
+            onConfirmed = {
+                when (confirming) {
+                    PendingConfirm.Accept -> {
+                        viewModel.acceptLoan(currentLoan)
+                        onBack()
+                    }
+                    PendingConfirm.Decline -> {
+                        viewModel.declineLoan(currentLoan.id)
+                        onBack()
+                    }
+                    PendingConfirm.MarkPaid -> viewModel.markPaid(currentLoan.id)
+                    PendingConfirm.ConfirmPayment -> currentLoan.pendingPayment?.let {
+                        viewModel.respondToPayment(currentLoan.id, it.id, confirm = true)
+                    }
+                    PendingConfirm.DeclinePayment -> currentLoan.pendingPayment?.let {
+                        viewModel.respondToPayment(currentLoan.id, it.id, confirm = false)
+                    }
+                    PendingConfirm.CancelPayRequest -> currentLoan.pendingPayment?.let {
+                        viewModel.cancelPaymentRequest(currentLoan.id, it.id)
+                    }
+                }
+                pendingConfirm = null
+            }
+        )
+    }
+
+    if (payDialogOpen && currentLoan != null) {
+        PayLoanDialog(
+            loan = currentLoan,
+            onDismiss = { payDialogOpen = false },
+            onSend = { amount ->
+                viewModel.requestPayment(currentLoan.id, amount)
+                payDialogOpen = false
+            }
+        )
     }
 
     if (confirmDelete) {
@@ -177,6 +251,228 @@ fun LoanDetailScreen(
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
         )
+    }
+}
+
+/** One "are you sure?" dialog for every loan action that can't be taken back. */
+@Composable
+private fun ConfirmActionDialog(
+    confirm: PendingConfirm,
+    loan: Loan,
+    onDismiss: () -> Unit,
+    onConfirmed: () -> Unit
+) {
+    val pendingAmount = loan.pendingPayment?.let { formatMoney(it.amount, loan.currency) } ?: ""
+    val (title, text, confirmLabel) = when (confirm) {
+        PendingConfirm.Accept -> Triple(
+            if (loan.kind == LoanKind.REQUEST) "Accept and lend?" else "Accept this loan?",
+            "You agree to ${formatMoney(loan.totalDue, loan.currency)} due by ${formatDate(loan.dueAt)}. " +
+                "Both sides will see the loan as active.",
+            "Accept"
+        )
+        PendingConfirm.Decline -> Triple(
+            if (loan.kind == LoanKind.REQUEST) "Decline this request?" else "Decline this offer?",
+            "It disappears from your list. ${loan.creatorEmail} keeps a declined record.",
+            "Decline"
+        )
+        PendingConfirm.MarkPaid -> Triple(
+            "Mark the whole loan as paid?",
+            "This settles the full ${formatMoney(loan.totalDue, loan.currency)} and closes the loan for both sides.",
+            "Mark paid"
+        )
+        PendingConfirm.ConfirmPayment -> Triple(
+            "Confirm payment of $pendingAmount?",
+            "The amount is deducted from what ${loan.borrowerEmail} still owes. This can't be undone.",
+            "Confirm"
+        )
+        PendingConfirm.DeclinePayment -> Triple(
+            "Decline payment of $pendingAmount?",
+            "Nothing is deducted. ${loan.borrowerEmail} can send a new request.",
+            "Decline"
+        )
+        PendingConfirm.CancelPayRequest -> Triple(
+            "Cancel your payment request?",
+            "Your $pendingAmount request is withdrawn before the lender answers it.",
+            "Cancel request"
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = { TextButton(onClick = onConfirmed) { Text(confirmLabel) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Back") } }
+    )
+}
+
+/** Borrower picks how much to pay; the lender still has to confirm it. */
+@Composable
+private fun PayLoanDialog(
+    loan: Loan,
+    onDismiss: () -> Unit,
+    onSend: (Double) -> Unit
+) {
+    val suggested = loan.nextPayment()?.amount ?: loan.remainingDue
+    var amountText by remember {
+        mutableStateOf(String.format(Locale.US, "%.2f", suggested))
+    }
+    val amount = amountText.toDoubleOrNull() ?: 0.0
+    val tooMuch = amount > loan.remainingDue + CENT_EPSILON
+    val valid = amount > 0.0 && !tooMuch
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pay loan") },
+        text = {
+            Column {
+                Text(
+                    "Tell ${loan.lenderEmail} how much you've paid. " +
+                        "It counts once they confirm, and any extra rolls into the next payment.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { text ->
+                        amountText = text
+                            .filter { c -> c.isDigit() || c == '.' || c == ',' }
+                            .replace(',', '.')
+                    },
+                    label = { Text("Amount") },
+                    prefix = { Text("€") },
+                    isError = amountText.isNotBlank() && !valid,
+                    supportingText = {
+                        Text(
+                            if (tooMuch)
+                                "That's more than the ${formatMoney(loan.remainingDue, loan.currency)} left"
+                            else
+                                "${formatMoney(loan.remainingDue, loan.currency)} left on this loan"
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSend(amount) }, enabled = valid) { Text("Send request") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/** A payment request waiting for an answer — actions differ by which side you're on. */
+@Composable
+private fun PendingPaymentCard(
+    loan: Loan,
+    payment: LoanPayment,
+    youAreLender: Boolean,
+    onConfirm: () -> Unit,
+    onDecline: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.HourglassEmpty,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(Modifier.size(8.dp))
+                Column {
+                    Text(
+                        "Payment of ${formatMoney(payment.amount, loan.currency)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        if (youAreLender)
+                            "${loan.borrowerEmail} says they've paid this — confirm to deduct it."
+                        else
+                            "Waiting for ${loan.lenderEmail} to confirm.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.9f)
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            if (youAreLender) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDecline,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Decline") }
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Confirm") }
+                }
+            } else {
+                TextButton(onClick = onCancel) { Text("Cancel request") }
+            }
+        }
+    }
+}
+
+/** Answered payment requests, newest first. */
+@Composable
+private fun PaymentsCard(loan: Loan) {
+    val answered = loan.payments
+        .filter { it.status != PaymentStatus.REQUESTED }
+        .sortedByDescending { it.requestedAt }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Payments", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            answered.forEachIndexed { i, payment ->
+                val confirmed = payment.status == PaymentStatus.CONFIRMED
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            formatMoney(payment.amount, loan.currency),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (confirmed) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            formatDate(payment.respondedAt ?: payment.requestedAt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        if (confirmed) "Confirmed" else "Declined",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (confirmed) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.error
+                    )
+                }
+                if (i < answered.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                }
+            }
+        }
     }
 }
 
@@ -228,6 +524,15 @@ private fun AmountCard(loan: Loan) {
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                 )
             }
+            if (loan.paidSoFar > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "${formatMoney(loan.paidSoFar, loan.currency)} paid · ${formatMoney(loan.remainingDue, loan.currency)} left",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
             Spacer(Modifier.height(12.dp))
             StatusChip(loan.status, loan.kind)
             Spacer(Modifier.height(10.dp))
@@ -247,12 +552,12 @@ private fun AmountCard(loan: Loan) {
     }
 }
 
-/** The concrete payment plan, with the next payment highlighted. */
+/** The concrete payment plan, with paid installments ticked off and the next one highlighted. */
 @Composable
 private fun ScheduleCard(loan: Loan) {
     val schedule = loan.paymentSchedule()
     val now = System.currentTimeMillis()
-    val nextNumber = schedule.firstOrNull { it.dueAt >= now }?.number
+    val nextNumber = schedule.firstOrNull { !it.settled }?.number
     val settled = loan.status == LoanStatus.PAID ||
         loan.status == LoanStatus.DELETED || loan.status == LoanStatus.DECLINED
 
@@ -283,25 +588,38 @@ private fun ScheduleCard(loan: Loan) {
             }
             Spacer(Modifier.height(12.dp))
             schedule.forEachIndexed { i, payment ->
+                val isCovered = settled || payment.settled
                 val isNext = !settled && payment.number == nextNumber
-                val isPast = !settled && payment.dueAt < now
+                val isPast = !settled && !isCovered && payment.dueAt < now
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = if (isNext) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.surfaceVariant,
+                        color = when {
+                            isCovered -> MaterialTheme.colorScheme.primaryContainer
+                            isNext -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        },
                         modifier = Modifier.size(28.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                "${payment.number}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (isNext) MaterialTheme.colorScheme.onPrimary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (isCovered) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = "Paid",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            } else {
+                                Text(
+                                    "${payment.number}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (isNext) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.size(12.dp))
@@ -312,23 +630,29 @@ private fun ScheduleCard(loan: Loan) {
                             fontWeight = if (isNext) FontWeight.SemiBold else null,
                             color = when {
                                 isPast -> MaterialTheme.colorScheme.error
-                                settled -> MaterialTheme.colorScheme.onSurfaceVariant
+                                settled || isCovered -> MaterialTheme.colorScheme.onSurfaceVariant
                                 else -> MaterialTheme.colorScheme.onSurface
                             }
                         )
                         if (isNext) {
                             Text(
-                                "next payment · ${humanizeUntil(payment.dueAt)}",
+                                if (payment.covered > 0)
+                                    "next · ${formatMoney(payment.covered, loan.currency)} already covered · ${humanizeUntil(payment.dueAt)}"
+                                else
+                                    "next payment · ${humanizeUntil(payment.dueAt)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                     Text(
-                        formatMoney(payment.amount, loan.currency),
+                        if (isNext && payment.covered > 0)
+                            formatMoney(payment.remaining, loan.currency)
+                        else
+                            formatMoney(payment.amount, loan.currency),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (isNext) FontWeight.SemiBold else FontWeight.Medium,
-                        color = if (settled) MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (settled || isCovered) MaterialTheme.colorScheme.onSurfaceVariant
                                 else MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -474,7 +798,8 @@ private fun ActionButtons(
     youAreCreator: Boolean,
     onAccept: () -> Unit,
     onDecline: () -> Unit,
-    onMarkPaid: () -> Unit
+    onMarkPaid: () -> Unit,
+    onPay: () -> Unit
 ) {
     when {
         !youAreCreator && loan.status == LoanStatus.PENDING -> {
@@ -518,6 +843,17 @@ private fun ActionButtons(
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             ) { Text("Mark as paid") }
+        }
+        !youAreLender && loan.status == LoanStatus.ACTIVE && loan.pendingPayment == null -> {
+            Button(
+                onClick = onPay,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) { Text("Pay loan") }
         }
         else -> { /* nothing to do */ }
     }

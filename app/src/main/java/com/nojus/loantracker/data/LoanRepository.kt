@@ -96,6 +96,69 @@ class LoanRepository(
     }
 
     /**
+     * Borrower asks the lender to confirm a partial payment. Only one request can be
+     * open at a time so the two sides never argue about which one was answered.
+     */
+    suspend fun requestPayment(loanId: String, amount: Double) {
+        val ref = loans.document(loanId)
+        firestore.runTransaction { tx ->
+            val loan = tx.get(ref).toObject(Loan::class.java)
+                ?: throw IllegalStateException("Loan not found")
+            check(loan.status == LoanStatus.ACTIVE) { "Loan is not active" }
+            check(loan.pendingPayment == null) { "A payment request is already waiting" }
+            val payment = LoanPayment(
+                id = loans.document().id,
+                amount = amount,
+                requestedAt = System.currentTimeMillis(),
+                status = PaymentStatus.REQUESTED
+            )
+            tx.update(ref, "payments", loan.payments + payment)
+        }.await()
+    }
+
+    /** Borrower withdraws their own unanswered payment request. */
+    suspend fun cancelPaymentRequest(loanId: String, paymentId: String) {
+        val ref = loans.document(loanId)
+        firestore.runTransaction { tx ->
+            val loan = tx.get(ref).toObject(Loan::class.java)
+                ?: throw IllegalStateException("Loan not found")
+            tx.update(ref, "payments", loan.payments.filterNot {
+                it.id == paymentId && it.status == PaymentStatus.REQUESTED
+            })
+        }.await()
+    }
+
+    /**
+     * Lender confirms or declines a payment request. Confirming enough to cover the
+     * whole balance settles the loan as PAID in the same transaction.
+     */
+    suspend fun respondToPayment(loanId: String, paymentId: String, confirm: Boolean) {
+        val ref = loans.document(loanId)
+        firestore.runTransaction { tx ->
+            val loan = tx.get(ref).toObject(Loan::class.java)
+                ?: throw IllegalStateException("Loan not found")
+            val now = System.currentTimeMillis()
+            val updatedPayments = loan.payments.map {
+                if (it.id == paymentId && it.status == PaymentStatus.REQUESTED) {
+                    it.copy(
+                        status = if (confirm) PaymentStatus.CONFIRMED else PaymentStatus.DECLINED,
+                        respondedAt = now
+                    )
+                } else it
+            }
+            val updates = mutableMapOf<String, Any>("payments" to updatedPayments)
+            val paid = updatedPayments
+                .filter { it.status == PaymentStatus.CONFIRMED }
+                .sumOf { it.amount }
+            if (confirm && paid >= loan.totalDue - CENT_EPSILON) {
+                updates["status"] = LoanStatus.PAID.name
+                updates["paidAt"] = now
+            }
+            tx.update(ref, updates)
+        }.await()
+    }
+
+    /**
      * Soft-delete: the loan stays in Firestore but is marked DELETED, so it shows up
      * under "Show loan history" with a Deleted tag for both sides.
      */
