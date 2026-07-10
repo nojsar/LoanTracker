@@ -37,7 +37,7 @@ $slides = @(
     @{ file = "loan-detail.png"; head = "Every term in`nblack and white";   sub = "Amount, interest and due date, agreed up front" }
     @{ file = "new-loan.png";    head = "Set up a loan`nin under a minute";  sub = "Offer to lend, or ask to borrow" }
     @{ file = "sign-in.png";     head = "For loans between`npeople you trust"; sub = "One tap to sign in - both sides see the same terms" }
-    @{ file = "active.png";      head = "Offers, requests`nand repayments";  sub = "Every active loan, in one place" }
+    @{ file = "active.png";      head = "Offers, requests`nand repayments";  sub = "Received, sent and active in one place" }
 )
 
 function New-RoundRect {
