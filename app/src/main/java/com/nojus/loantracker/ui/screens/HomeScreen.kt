@@ -65,11 +65,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.firebase.auth.FirebaseUser
 import com.nojus.loantracker.data.Loan
@@ -492,10 +496,15 @@ private fun LoanRow(
             CounterpartyAvatar(loan = loan, youAreLender = youAreLender)
             Spacer(Modifier.size(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (youAreLender) "To ${loan.borrowerEmail}" else "From ${loan.lenderEmail}",
+                val counterparty = if (youAreLender) {
+                    loan.borrowerName.ifBlank { loan.borrowerEmail }
+                } else {
+                    loan.lenderName.ifBlank { loan.lenderEmail }
+                }
+                SingleLineFitText(
+                    text = if (youAreLender) "To $counterparty" else "From $counterparty",
                     style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1
+                    modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(2.dp))
                 // Active installment loans count down to the next payment step,
@@ -553,6 +562,39 @@ private fun LoanRow(
             }
         }
     }
+}
+
+/**
+ * One-line text that shrinks its font until the whole string fits (down to
+ * [minFontSize], then ellipsizes). Keeps long emails like
+ * "From nojadrakonis@gmail.com" from wrapping and getting cut off.
+ */
+@Composable
+private fun SingleLineFitText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    minFontSize: Float = 11f
+) {
+    var fontSize by remember(text) { mutableStateOf(style.fontSize) }
+    var settled by remember(text) { mutableStateOf(false) }
+    Text(
+        text = text,
+        style = style,
+        fontSize = fontSize,
+        maxLines = 1,
+        softWrap = false,
+        overflow = if (settled) TextOverflow.Ellipsis else TextOverflow.Clip,
+        // Stay invisible while shrinking so the size change never flashes.
+        modifier = modifier.drawWithContent { if (settled) drawContent() },
+        onTextLayout = { result ->
+            if (result.didOverflowWidth && fontSize.value > minFontSize) {
+                fontSize = (fontSize.value - 1f).coerceAtLeast(minFontSize).sp
+            } else {
+                settled = true
+            }
+        }
+    )
 }
 
 @Composable
