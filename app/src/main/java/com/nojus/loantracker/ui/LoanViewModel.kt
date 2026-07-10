@@ -45,6 +45,7 @@ data class LoanLists(
 ) {
     val sentCount: Int get() = sentPending.size + sentOther.size
     val receivedCount: Int get() = receivedPending.size + receivedOther.size
+    val activeCount: Int get() = activeLent.size + activeBorrowed.size
 
     val lentPrincipal: Double get() = activeLent.sumOf { it.principal }
     val lentExpectedReturn: Double get() = activeLent.sumOf { it.remainingDue }

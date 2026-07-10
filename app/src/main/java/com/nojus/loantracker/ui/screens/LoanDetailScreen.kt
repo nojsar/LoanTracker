@@ -140,12 +140,7 @@ fun LoanDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            AmountCard(current)
-
-            if (current.repaymentInterval != RepaymentInterval.NONE) {
-                ScheduleCard(current)
-            }
-
+            // A waiting payment is the most actionable thing on the screen — keep it first.
             current.pendingPayment?.let { payment ->
                 PendingPaymentCard(
                     loan = current,
@@ -155,6 +150,12 @@ fun LoanDetailScreen(
                     onDecline = { pendingConfirm = PendingConfirm.DeclinePayment },
                     onCancel = { pendingConfirm = PendingConfirm.CancelPayRequest }
                 )
+            }
+
+            AmountCard(current)
+
+            if (current.repaymentInterval != RepaymentInterval.NONE) {
+                ScheduleCard(current)
             }
 
             if (current.payments.any { it.status != PaymentStatus.REQUESTED }) {

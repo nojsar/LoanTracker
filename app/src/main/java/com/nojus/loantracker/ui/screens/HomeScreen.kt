@@ -200,14 +200,20 @@ fun HomeScreen(
                 SegmentedButton(
                     selected = tab == 0,
                     onClick = { tab = 0 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
                     label = { Text("Received (${lists.receivedCount})") }
                 )
                 SegmentedButton(
                     selected = tab == 1,
                     onClick = { tab = 1 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
                     label = { Text("Sent (${lists.sentCount})") }
+                )
+                SegmentedButton(
+                    selected = tab == 2,
+                    onClick = { tab = 2 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                    label = { Text("Active (${lists.activeCount})") }
                 )
             }
 
@@ -220,30 +226,67 @@ fun HomeScreen(
                 },
                 label = "loan-lists"
             ) { selected ->
-                val pending = if (selected == 0) lists.receivedPending else lists.sentPending
-                val other = if (selected == 0) lists.receivedOther else lists.sentOther
-                val sentTab = selected == 1
-
-                if (pending.isEmpty() && other.isEmpty()) {
-                    EmptyState(sentTab)
+                if (selected == 2) {
+                    // Accepted loans from both sides, whoever sent them.
+                    if (lists.activeCount == 0) {
+                        EmptyState(
+                            icon = Icons.Outlined.Handshake,
+                            title = "No active loans",
+                            message = "Loans show up here once both\nsides have agreed to them."
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            section(
+                                title = "You lent",
+                                loans = lists.activeLent,
+                                myEmail = user.email.orEmpty(),
+                                onOpen = onOpenLoan
+                            )
+                            section(
+                                title = "You borrowed",
+                                loans = lists.activeBorrowed,
+                                myEmail = user.email.orEmpty(),
+                                onOpen = onOpenLoan
+                            )
+                        }
+                    }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        section(
-                            title = if (sentTab) "Awaiting acceptance" else "Needs your response",
-                            loans = pending,
-                            myEmail = user.email.orEmpty(),
-                            onOpen = onOpenLoan
+                    val pending = if (selected == 0) lists.receivedPending else lists.sentPending
+                    val other = if (selected == 0) lists.receivedOther else lists.sentOther
+                    val sentTab = selected == 1
+
+                    if (pending.isEmpty() && other.isEmpty()) {
+                        EmptyState(
+                            icon = if (sentTab) Icons.Filled.ArrowOutward else Icons.Outlined.Handshake,
+                            title = if (sentTab) "Nothing sent yet" else "Nothing received yet",
+                            message = if (sentTab)
+                                "Offer a loan or request one with \"New loan\" —\nyou'll both see the same terms."
+                            else
+                                "Loan offers and requests sent to\nyour email will show up here."
                         )
-                        section(
-                            title = "Active & history",
-                            loans = other,
-                            myEmail = user.email.orEmpty(),
-                            onOpen = onOpenLoan
-                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            section(
+                                title = if (sentTab) "Awaiting acceptance" else "Needs your response",
+                                loans = pending,
+                                myEmail = user.email.orEmpty(),
+                                onOpen = onOpenLoan
+                            )
+                            section(
+                                title = "Active & history",
+                                loans = other,
+                                myEmail = user.email.orEmpty(),
+                                onOpen = onOpenLoan
+                            )
+                        }
                     }
                 }
             }
@@ -391,7 +434,11 @@ private fun SectionHeader(text: String) {
 }
 
 @Composable
-private fun EmptyState(sentTab: Boolean) {
+private fun EmptyState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    message: String
+) {
     Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
@@ -401,7 +448,7 @@ private fun EmptyState(sentTab: Boolean) {
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (sentTab) Icons.Filled.ArrowOutward else Icons.Outlined.Handshake,
+                        imageVector = icon,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(32.dp)
@@ -410,16 +457,13 @@ private fun EmptyState(sentTab: Boolean) {
             }
             Spacer(Modifier.height(20.dp))
             Text(
-                text = if (sentTab) "Nothing sent yet" else "Nothing received yet",
+                text = title,
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = if (sentTab)
-                    "Offer a loan or request one with \"New loan\" —\nyou'll both see the same terms."
-                else
-                    "Loan offers and requests sent to\nyour email will show up here.",
+                text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
