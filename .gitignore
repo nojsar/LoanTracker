@@ -20,3 +20,21 @@ local.properties
 *.pem
 *.aab
 *.apk
+*.apks
+/app/release/
+/app/debug/
+/dist/
+keystore.properties
+signing.properties
+
+# Service-account / API credentials and local env files
+*service-account*.json
+*publisher-credentials*.json
+play-credentials*.json
+.env
+.env.*
+*.env
+
+# OS / tooling noise
+Thumbs.db
+*.hprof
